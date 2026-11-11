@@ -1,6 +1,6 @@
 // Checks that every kernel function and constant named in the step texts exists in the kernel sources.
 // Texts describe 7.3; text a step shares between versions (no `k510` override) must hold for 5.10 as well,
-// and the `k510` versions are checked against 5.10. Needs kernel checkouts (net/, include/, security/):
+// and the `k510` versions are checked against 5.10. Needs kernel checkouts (net/, include/, security/, drivers/net/veth.c):
 //   KERNEL_5_10=/path/to/linux-5.10.8 KERNEL_7_3=/path/to/linux-7.3 npx vitest run scripts/kernel-refs.test.ts
 // Without them the test is skipped; CI runs it before every deploy (.github/workflows/deploy.yml).
 
@@ -11,7 +11,8 @@ import { buildSteps, type Mode, type Proto, type Step } from "../src/steps";
 
 const K510 = process.env.KERNEL_5_10;
 const K73 = process.env.KERNEL_7_3;
-const DIRS = ["net", "include", "security"];
+// net/, include/ and security/, plus the one driver the texts talk about
+const DIRS = ["net", "include", "security", "drivers/net/veth.c"];
 
 // Names in the texts that are not kernel symbols: user-space calls and tools
 const NOT_KERNEL = new Set(["write", "read", "send", "sendto", "recv", "recvfrom", "connect", "accept", "sendfile"]);
@@ -34,7 +35,7 @@ const funcs = (s: string) => [...s.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\(\)/g)].
 // Constants like NF_INET_FORWARD or TCP_TIME_WAIT: upper case with an underscore, alone in a <code>
 const consts = (html: string) => codeOf(html).filter((c) => /^[A-Z][A-Z0-9_]*_[A-Z0-9_]+$/.test(c));
 
-const all: Step[] = (["egress", "ingress", "forward", "multicast", "mcroute"] as Mode[]).flatMap((m) => (["tcp", "udp"] as Proto[]).flatMap((p) => buildSteps(m, p)));
+const all: Step[] = (["egress", "ingress", "forward", "multicast", "mcroute", "bridge", "tcredir"] as Mode[]).flatMap((m) => (["tcp", "udp"] as Proto[]).flatMap((p) => buildSteps(m, p)));
 
 function refs(pick: (s: Step) => string[]) {
   const f = new Set<string>();

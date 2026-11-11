@@ -66,6 +66,7 @@ export const UI = {
   ubufTxt: { en: "sits in the process buffer in user space", uk: "лежать у буфері процесу в user space" },
   skbRaw: { en: "raw frame in RX ring · no sk_buff yet", uk: "сирий кадр у RX ring · sk_buff ще нема" },
   skbPush: { en: "headers are pushed in front", uk: "заголовки додаються спереду" },
+  skbSameEth: { en: "the same Ethernet header, data moved back to it", uk: "той самий Ethernet-заголовок, data повернуто на нього" },
   skbNewEth: { en: "new Ethernet header pushed in front", uk: "новий Ethernet-заголовок додано спереду" },
   skbPull: { en: "headers stripped by moving data", uk: "заголовки знімаються зсувом data" },
 

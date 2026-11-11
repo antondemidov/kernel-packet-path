@@ -5,8 +5,11 @@
 
 import type { Tx, Txt } from "./i18n";
 
-/** "multicast" and "mcroute" have no button: they continue Receive from the routing decision, for a group member and a multicast router */
-export type Mode = "egress" | "ingress" | "forward" | "multicast" | "mcroute";
+/**
+ * Modes without a button continue Receive from a decision point: "multicast" and "mcroute" from the routing decision
+ * (group member, multicast router), "bridge" and "tcredir" from netif_receive_skb() (bridge port, tc/BPF redirect).
+ */
+export type Mode = "egress" | "ingress" | "forward" | "multicast" | "mcroute" | "bridge" | "tcredir";
 export type Proto = "tcp" | "udp";
 export type Kernel = "5.10" | "7.3";
 export type Layer = "app" | "socket" | "transport" | "ip" | "link" | "nic" | "wire";
@@ -18,9 +21,10 @@ export type Hook = "PRE_ROUTING" | "LOCAL_IN" | "FORWARD" | "LOCAL_OUT" | "POST_
 /**
  * What happens to the rest of the path if the packet takes a branch:
  * omitted — the following steps stay the same; "end" — the packet's path ends here (dropped or consumed);
- * "out" — it continues in code this walkthrough doesn't cover; a Mode — it continues as that scenario.
+ * "out" — it continues in code this walkthrough doesn't cover; a Mode — it continues as that scenario at the same step;
+ * { mode, fn } — it continues as that scenario from the step with that `fn`.
  */
-export type BranchNext = "end" | "out" | Mode;
+export type BranchNext = "end" | "out" | Mode | { mode: Mode; fn: string };
 
 export interface Step {
   l: Layer;
@@ -325,6 +329,38 @@ const E_TAIL: Step[] = [
 /* ---------------- INGRESS ---------------- */
 
 // Shared start for receive and forward: from the wire up to ip_rcv()
+// netif_receive_skb() is shared by every receive path; the usual branch is the one that path takes
+const netif = (pick: number): Step => ({
+  l: "link", fn: "netif_receive_skb()", data: "IP", f: ["mac", "network"],
+  t: { en: "Who gets the packet", uk: "Кому віддати пакет" },
+  br: [
+    ["ptype_all", { en: "tcpdump / AF_PACKET get a copy", uk: "копія для tcpdump / AF_PACKET" },
+      { en: "<p>In this case the interesting part is the sniffer: a running tcpdump or Wireshark has an <code>AF_PACKET</code> socket on the <code>ptype_all</code> list. Its capture filter runs in the kernel, and if the packet matches, the sniffer gets a copy of the bytes in its ring buffer.</p><p>This branch never ends the packet’s path: after the sniffers have looked, the packet goes on to tc, netfilter ingress and the protocol handler. That is why tcpdump shows incoming packets that a firewall drops later.</p>", uk: "<p>У цьому випадку цікавий саме снифер: запущений tcpdump чи Wireshark має <code>AF_PACKET</code>-сокет у списку <code>ptype_all</code>. Його фільтр захоплення виконується в ядрі, і якщо пакет підходить, снифер отримує копію байтів у свій кільцевий буфер.</p><p>Ця гілка ніколи не завершує шлях пакета: після сниферів він іде далі до tc, netfilter ingress і обробника протоколу. Саме тому tcpdump показує вхідні пакети, які фаєрвол потім відкидає.</p>" }],
+    ["tc / nf ingress", { en: "may drop or redirect", uk: "можуть відкинути чи перенаправити" },
+      { en: "<p>In this case a program attached to the interface decides the packet’s fate before IP sees it. tc ingress filters and BPF programs can let it through, drop it, or redirect it to another interface, for example straight into a container’s veth; Kubernetes CNIs such as Cilium work this way. After tc, an nftables <code>ingress</code> chain (in the <code>netdev</code> family) can filter it too.</p><p>A dropped packet ends here. A redirected one continues on the other interface instead of going up this one’s stack.</p>", uk: "<p>У цьому випадку програма, прикріплена до інтерфейсу, вирішує долю пакета ще до IP. Фільтри tc ingress і BPF-програми можуть пропустити його, відкинути або перенаправити на інший інтерфейс, наприклад одразу у veth контейнера; так працюють CNI для Kubernetes, як-от Cilium. Після tc пакет може відфільтрувати ще й ланцюжок nftables <code>ingress</code> (у сімействі <code>netdev</code>).</p><p>Відкинутий пакет на цьому закінчується. Перенаправлений продовжує шлях на іншому інтерфейсі, а не піднімається по стеку цього.</p>" }, "tcredir"],
+    ["VLAN", { en: "to the VLAN interface", uk: "на VLAN-інтерфейс" },
+      { en: "<p>In this case the frame carries an 802.1Q VLAN tag. If there is a VLAN interface for that VLAN ID (e.g. <code>eth0.100</code>), the tag is removed, the packet is handed to that interface and processed again from the start, as if it had arrived there.</p><p>If no VLAN interface exists for that ID, the packet is marked as not for this host (<code>PACKET_OTHERHOST</code>) and is dropped later.</p>", uk: "<p>У цьому випадку кадр має VLAN-мітку 802.1Q. Якщо для цього VLAN ID є VLAN-інтерфейс (наприклад, <code>eth0.100</code>), мітка знімається, пакет передається цьому інтерфейсу й обробляється знову з початку, ніби прийшов туди.</p><p>Якщо VLAN-інтерфейсу для цього ID нема, пакет позначається як не для цього хоста (<code>PACKET_OTHERHOST</code>) і пізніше відкидається.</p>" }],
+    ["rx_handler()", { en: "bridge / bond takes the packet", uk: "bridge / bond забирає пакет" },
+      { en: "<p>In this case the interface isn’t used on its own: it is a port of a bridge or a member of a bond (macvlan, Open vSwitch and team use the same hook). Its <code>rx_handler()</code> takes the packet.</p><p>A bridge looks at the destination MAC. It may forward the frame to another port at layer 2, without IP ever seeing it (this is how containers on a Docker bridge talk to each other), or pass it up as traffic of the bridge device itself (<code>br0</code>, <code>docker0</code>). A bond relabels the packet as received on the bond device and runs the receive step again.</p>", uk: "<p>У цьому випадку інтерфейс не працює сам по собі: він порт bridge або учасник bond (той самий хук використовують macvlan, Open vSwitch і team). Пакет забирає його <code>rx_handler()</code>.</p><p>Bridge дивиться на MAC одержувача. Він може переслати кадр на інший порт на рівні 2, і IP-рівень його навіть не побачить (так спілкуються контейнери на Docker bridge), або передати нагору як трафік самого bridge-пристрою (<code>br0</code>, <code>docker0</code>). Bond позначає пакет як отриманий на bond-пристрої й запускає крок прийому ще раз.</p>" }, "bridge"],
+    ["ip_rcv()", { en: "plain IPv4", uk: "звичайний IPv4" },
+      { en: "An ordinary IPv4 frame: it goes to the IPv4 handler.", uk: "Звичайний IPv4-кадр: він іде до обробника IPv4." }],
+  ],
+  brPick: pick,
+  d: {
+    en: "<p>Here the kernel decides who gets the packet. <code>network_header</code> is set right away.</p><p>Sniffers come first. A running tcpdump or Wireshark has an <code>AF_PACKET</code> socket open, and such sockets sit on the <code>ptype_all</code> list. Each of them is shown the packet: the capture filter runs in the kernel first (e.g. <code>tcpdump port 80</code>, compiled to BPF), and if it matches, tcpdump gets a copy of the bytes in its shared-memory ring buffer. The packet itself goes on regardless: a sniffer only watches, it doesn’t take the packet away.</p><p>Then tc ingress (classifiers, tc BPF) and the netfilter <code>ingress</code> hook run; either may drop or redirect the packet. Frames with a VLAN tag go to the VLAN interface. If the interface is part of a bridge or bond, its <code>rx_handler()</code> takes the packet over, and from then on it is traffic of the bridge or bond, not of this interface.</p><p>Otherwise the handler for the EtherType (<code>ptype_base</code>) is called: for IPv4 that is <code>ip_rcv()</code>.</p>",
+    uk: "<p>Тут ядро вирішує, хто отримає пакет. Одразу виставляється <code>network_header</code>.</p><p>Спершу снифери. Запущений tcpdump чи Wireshark тримає відкритий <code>AF_PACKET</code>-сокет, а такі сокети стоять у списку <code>ptype_all</code>. Кожному з них показують пакет: спершу в ядрі виконується фільтр захоплення (наприклад, <code>tcpdump port 80</code>, скомпільований у BPF), і якщо пакет підходить, tcpdump отримує копію байтів у свій кільцевий буфер у спільній пам’яті. Сам пакет іде далі в будь-якому разі: снифер лише дивиться, а не забирає пакет.</p><p>Далі tc ingress (класифікатори, BPF tc) і netfilter-хук <code>ingress</code>; кожен може відкинути чи перенаправити пакет. Кадри з VLAN-тегом ідуть на VLAN-інтерфейс. Якщо інтерфейс входить у bridge чи bond, його <code>rx_handler()</code> забирає пакет собі, і далі це вже трафік bridge чи bond, а не цього інтерфейсу.</p><p>Інакше викликається обробник для EtherType (<code>ptype_base</code>): для IPv4 це <code>ip_rcv()</code>.</p>",
+  },
+  note: {
+    en: "<b>Correction.</b> The paper treats TAP as a virtual interface for VMs. In the code it is the <code>ptype_all</code> list: anything that opened an <code>AF_PACKET</code> socket. That is where tcpdump and Wireshark see the packet, before netfilter.",
+    uk: "<b>Уточнення.</b> Стаття трактує TAP як віртуальний інтерфейс для ВМ. У коді це список <code>ptype_all</code>: усе, що відкрило <code>AF_PACKET</code>-сокет, тобто tcpdump і Wireshark бачать пакет саме тут, до netfilter.",
+  },
+  diff: {
+      en: "<b>5.10 → 7.3.</b> The order in <code>__netif_receive_skb_core()</code> is the same. New: tc ingress BPF programs can attach through <b>tcx</b> links (<code>tcx_run()</code>), several programs per device.",
+      uk: "<b>5.10 → 7.3.</b> Порядок у <code>__netif_receive_skb_core()</code> той самий. Нове: BPF-програми tc ingress можна чіпляти через <b>tcx</b> links (<code>tcx_run()</code>), кілька програм на пристрій.",
+    },
+
+});
+
 const IN_LOWER: Step[] = [
   {
     l: "wire", fn: "Ethernet frame", raw: true,
@@ -358,35 +394,7 @@ const IN_LOWER: Step[] = [
         uk: "<b>5.10 → 7.3.</b> GRO винесено в окремий файл <code>net/core/gro.c</code>; <code>napi_gro_receive()</code> тепер inline-обгортка над <code>gro_receive_skb()</code>. NAPI також може працювати в режимі <b>threaded</b>: опитування йде в потоках ядра <code>napi/&lt;dev&gt;-&lt;id&gt;</code> замість softirq, вмикається через <code>/sys/class/net/&lt;dev&gt;/threaded</code>.",
       },
   },
-  {
-    l: "link", fn: "netif_receive_skb()", data: "IP", f: ["mac", "network"],
-    t: { en: "Who gets the packet", uk: "Кому віддати пакет" },
-    br: [
-      ["ptype_all", { en: "tcpdump / AF_PACKET get a copy", uk: "копія для tcpdump / AF_PACKET" },
-        { en: "<p>In this case the interesting part is the sniffer: a running tcpdump or Wireshark has an <code>AF_PACKET</code> socket on the <code>ptype_all</code> list. Its capture filter runs in the kernel, and if the packet matches, the sniffer gets a copy of the bytes in its ring buffer.</p><p>This branch never ends the packet’s path: after the sniffers have looked, the packet goes on to tc, netfilter ingress and the protocol handler. That is why tcpdump shows incoming packets that a firewall drops later.</p>", uk: "<p>У цьому випадку цікавий саме снифер: запущений tcpdump чи Wireshark має <code>AF_PACKET</code>-сокет у списку <code>ptype_all</code>. Його фільтр захоплення виконується в ядрі, і якщо пакет підходить, снифер отримує копію байтів у свій кільцевий буфер.</p><p>Ця гілка ніколи не завершує шлях пакета: після сниферів він іде далі до tc, netfilter ingress і обробника протоколу. Саме тому tcpdump показує вхідні пакети, які фаєрвол потім відкидає.</p>" }],
-      ["tc / nf ingress", { en: "may drop or redirect", uk: "можуть відкинути чи перенаправити" },
-        { en: "<p>In this case a program attached to the interface decides the packet’s fate before IP sees it. tc ingress filters and BPF programs can let it through, drop it, or redirect it to another interface, for example straight into a container’s veth; Kubernetes CNIs such as Cilium work this way. After tc, an nftables <code>ingress</code> chain (in the <code>netdev</code> family) can filter it too.</p><p>A dropped packet ends here. A redirected one continues on the other interface instead of going up this one’s stack.</p>", uk: "<p>У цьому випадку програма, прикріплена до інтерфейсу, вирішує долю пакета ще до IP. Фільтри tc ingress і BPF-програми можуть пропустити його, відкинути або перенаправити на інший інтерфейс, наприклад одразу у veth контейнера; так працюють CNI для Kubernetes, як-от Cilium. Після tc пакет може відфільтрувати ще й ланцюжок nftables <code>ingress</code> (у сімействі <code>netdev</code>).</p><p>Відкинутий пакет на цьому закінчується. Перенаправлений продовжує шлях на іншому інтерфейсі, а не піднімається по стеку цього.</p>" }, "out"],
-      ["VLAN", { en: "to the VLAN interface", uk: "на VLAN-інтерфейс" },
-        { en: "<p>In this case the frame carries an 802.1Q VLAN tag. If there is a VLAN interface for that VLAN ID (e.g. <code>eth0.100</code>), the tag is removed, the packet is handed to that interface and processed again from the start, as if it had arrived there.</p><p>If no VLAN interface exists for that ID, the packet is marked as not for this host (<code>PACKET_OTHERHOST</code>) and is dropped later.</p>", uk: "<p>У цьому випадку кадр має VLAN-мітку 802.1Q. Якщо для цього VLAN ID є VLAN-інтерфейс (наприклад, <code>eth0.100</code>), мітка знімається, пакет передається цьому інтерфейсу й обробляється знову з початку, ніби прийшов туди.</p><p>Якщо VLAN-інтерфейсу для цього ID нема, пакет позначається як не для цього хоста (<code>PACKET_OTHERHOST</code>) і пізніше відкидається.</p>" }],
-      ["rx_handler()", { en: "bridge / bond takes the packet", uk: "bridge / bond забирає пакет" },
-        { en: "<p>In this case the interface isn’t used on its own: it is a port of a bridge or a member of a bond (macvlan, Open vSwitch and team use the same hook). Its <code>rx_handler()</code> takes the packet.</p><p>A bridge looks at the destination MAC. It may forward the frame to another port at layer 2, without IP ever seeing it (this is how containers on a Docker bridge talk to each other), or pass it up as traffic of the bridge device itself (<code>br0</code>, <code>docker0</code>). A bond relabels the packet as received on the bond device and runs the receive step again.</p>", uk: "<p>У цьому випадку інтерфейс не працює сам по собі: він порт bridge або учасник bond (той самий хук використовують macvlan, Open vSwitch і team). Пакет забирає його <code>rx_handler()</code>.</p><p>Bridge дивиться на MAC одержувача. Він може переслати кадр на інший порт на рівні 2, і IP-рівень його навіть не побачить (так спілкуються контейнери на Docker bridge), або передати нагору як трафік самого bridge-пристрою (<code>br0</code>, <code>docker0</code>). Bond позначає пакет як отриманий на bond-пристрої й запускає крок прийому ще раз.</p>" }, "out"],
-      ["ip_rcv()", { en: "plain IPv4", uk: "звичайний IPv4" },
-        { en: "An ordinary IPv4 frame: it goes to the IPv4 handler.", uk: "Звичайний IPv4-кадр: він іде до обробника IPv4." }],
-    ],
-    brPick: 4,
-    d: {
-      en: "<p>Here the kernel decides who gets the packet. <code>network_header</code> is set right away.</p><p>Sniffers come first. A running tcpdump or Wireshark has an <code>AF_PACKET</code> socket open, and such sockets sit on the <code>ptype_all</code> list. Each of them is shown the packet: the capture filter runs in the kernel first (e.g. <code>tcpdump port 80</code>, compiled to BPF), and if it matches, tcpdump gets a copy of the bytes in its shared-memory ring buffer. The packet itself goes on regardless: a sniffer only watches, it doesn’t take the packet away.</p><p>Then tc ingress (classifiers, tc BPF) and the netfilter <code>ingress</code> hook run; either may drop or redirect the packet. Frames with a VLAN tag go to the VLAN interface. If the interface is part of a bridge or bond, its <code>rx_handler()</code> takes the packet over, and from then on it is traffic of the bridge or bond, not of this interface.</p><p>Otherwise the handler for the EtherType (<code>ptype_base</code>) is called: for IPv4 that is <code>ip_rcv()</code>.</p>",
-      uk: "<p>Тут ядро вирішує, хто отримає пакет. Одразу виставляється <code>network_header</code>.</p><p>Спершу снифери. Запущений tcpdump чи Wireshark тримає відкритий <code>AF_PACKET</code>-сокет, а такі сокети стоять у списку <code>ptype_all</code>. Кожному з них показують пакет: спершу в ядрі виконується фільтр захоплення (наприклад, <code>tcpdump port 80</code>, скомпільований у BPF), і якщо пакет підходить, tcpdump отримує копію байтів у свій кільцевий буфер у спільній пам’яті. Сам пакет іде далі в будь-якому разі: снифер лише дивиться, а не забирає пакет.</p><p>Далі tc ingress (класифікатори, BPF tc) і netfilter-хук <code>ingress</code>; кожен може відкинути чи перенаправити пакет. Кадри з VLAN-тегом ідуть на VLAN-інтерфейс. Якщо інтерфейс входить у bridge чи bond, його <code>rx_handler()</code> забирає пакет собі, і далі це вже трафік bridge чи bond, а не цього інтерфейсу.</p><p>Інакше викликається обробник для EtherType (<code>ptype_base</code>): для IPv4 це <code>ip_rcv()</code>.</p>",
-    },
-    note: {
-      en: "<b>Correction.</b> The paper treats TAP as a virtual interface for VMs. In the code it is the <code>ptype_all</code> list: anything that opened an <code>AF_PACKET</code> socket. That is where tcpdump and Wireshark see the packet, before netfilter.",
-      uk: "<b>Уточнення.</b> Стаття трактує TAP як віртуальний інтерфейс для ВМ. У коді це список <code>ptype_all</code>: усе, що відкрило <code>AF_PACKET</code>-сокет, тобто tcpdump і Wireshark бачать пакет саме тут, до netfilter.",
-    },
-    diff: {
-        en: "<b>5.10 → 7.3.</b> The order in <code>__netif_receive_skb_core()</code> is the same. New: tc ingress BPF programs can attach through <b>tcx</b> links (<code>tcx_run()</code>), several programs per device.",
-        uk: "<b>5.10 → 7.3.</b> Порядок у <code>__netif_receive_skb_core()</code> той самий. Нове: BPF-програми tc ingress можна чіпляти через <b>tcx</b> links (<code>tcx_run()</code>), кілька програм на пристрій.",
-      },
-  },
+  netif(4),
   {
     l: "ip", fn: "ip_rcv()", data: "IP", f: F_ALL, hook: "PRE_ROUTING",
     t: { en: "Sanity checks and the PRE_ROUTING hook", uk: "Перевірки і хук PRE_ROUTING" },
@@ -768,6 +776,131 @@ const MCROUTE_STEPS: Step[] = [
   M_WIRE, R_NIC, ...IN_LOWER.slice(2), mcRoute(1), R_INPUT, R_FWD, R_XMIT, R_OUT, F_MID[4], R_NEIGH, ...OUT_LINK, F_MID[F_MID.length - 1],
 ];
 
+/* ---------------- BRIDGE AND TC REDIRECT (CONTAINERS) ---------------- */
+// Continuations of Receive from netif_receive_skb(): a frame taken by a Linux bridge (Docker bridge, bridge CNIs) and a
+// frame redirected by a tc BPF program (Cilium-style). Both end in a container's network namespace behind a veth pair.
+// Not covered by the paper; built from net/bridge/, net/core/dev.c, net/core/filter.c and drivers/net/veth.c in 5.10 and 7.3.
+
+const CT_SCOPE: Txt = {
+  en: "<b>Beyond the paper.</b> The paper doesn’t follow this path. It is built from <code>net/bridge/</code>, <code>net/core/dev.c</code>, <code>net/core/filter.c</code> and <code>drivers/net/veth.c</code> in kernels 5.10 and 7.3.",
+  uk: "<b>Поза статтею.</b> Стаття цей шлях не простежує. Його зібрано за кодом <code>net/bridge/</code>, <code>net/core/dev.c</code>, <code>net/core/filter.c</code> і <code>drivers/net/veth.c</code> ядер 5.10 і 7.3.",
+};
+
+const B_NIC: Step = {
+  l: "nic", fn: "bridge port in promiscuous mode, DMA → RX ring, IRQ", raw: true, q: "rxring",
+  t: { en: "A bridge port takes frames for other MACs too", uk: "Порт bridge бере кадри і для чужих MAC" },
+  d: {
+    en: "<p>This interface is a port of a Linux bridge (for example <code>docker0</code> or <code>cni0</code>, with the host’s NIC or the containers’ veth ends as ports). When <code>br_add_if()</code> added it, it registered <code>br_handle_frame()</code> as the interface’s <code>rx_handler</code> and, in the usual case, put the card into promiscuous mode: a bridge must accept frames addressed to the MACs behind it, not only its own.</p><p>The rest is the same as for any frame: FCS check, DMA into the <b>RX ring</b>, an interrupt.</p>",
+    uk: "<p>Цей інтерфейс — порт Linux bridge (наприклад, <code>docker0</code> чи <code>cni0</code>, де портами є карта хоста або veth-кінці контейнерів). Коли <code>br_add_if()</code> додавав його, він зареєстрував <code>br_handle_frame()</code> як <code>rx_handler</code> інтерфейсу і, у звичайному випадку, перевів карту в promiscuous mode: bridge має приймати кадри для MAC-адрес за ним, а не лише для своєї.</p><p>Далі все як для будь-якого кадру: перевірка FCS, DMA в <b>RX ring</b>, переривання.</p>",
+  },
+  note: CT_SCOPE,
+};
+
+const B_HANDLE: Step = {
+  l: "link", fn: "br_handle_frame()", data: "IP", f: ["mac", "network"],
+  t: { en: "The bridge takes the frame", uk: "Bridge забирає кадр" },
+  d: {
+    en: "<p><code>__netif_receive_skb_core()</code> calls the port’s <code>rx_handler</code>, <code>br_handle_frame()</code>, and the frame now belongs to the bridge; it won’t go to <code>ip_rcv()</code> of this interface. Link-local frames (01:80:c2:00:00:0x, such as STP) are handled separately. The port must be in the forwarding or learning state; a learning port only records MACs and drops the frame.</p><p>Then the bridge <b>PREROUTING</b> hook runs: nftables tables of the <code>bridge</code> family or ebtables. If <code>br_netfilter</code> is loaded and <code>net.bridge.bridge-nf-call-iptables = 1</code>, IPv4 packets also pass the regular iptables chains here, which is what Kubernetes relies on to apply Service rules to traffic between pods on one bridge.</p>",
+    uk: "<p><code>__netif_receive_skb_core()</code> викликає <code>rx_handler</code> порту, <code>br_handle_frame()</code>, і кадр тепер належить bridge; до <code>ip_rcv()</code> цього інтерфейсу він не дійде. Link-local кадри (01:80:c2:00:00:0x, як-от STP) обробляються окремо. Порт має бути в стані forwarding або learning; порт у стані learning лише запам’ятовує MAC і відкидає кадр.</p><p>Далі хук bridge <b>PREROUTING</b>: таблиці nftables сімейства <code>bridge</code> або ebtables. Якщо завантажено <code>br_netfilter</code> і <code>net.bridge.bridge-nf-call-iptables = 1</code>, IPv4-пакети тут проходять і звичайні ланцюжки iptables; на цьому тримаються правила Service у Kubernetes для трафіку між подами на одному bridge.</p>",
+  },
+};
+
+const B_FINISH: Step = {
+  l: "link", fn: "br_handle_frame_finish()", data: "IP", f: ["mac", "network"],
+  t: { en: "Learn the sender, look up the receiver", uk: "Запам’ятати відправника, знайти одержувача" },
+  br: [
+    [{ en: "known MAC", uk: "відома MAC" }, { en: "forward to its port", uk: "переслати на її порт" },
+      { en: "The destination MAC is in the forwarding table on another port: the frame goes to that port only.", uk: "MAC одержувача є в таблиці пересилання на іншому порту: кадр іде лише на цей порт." }],
+    [{ en: "unknown MAC", uk: "невідома MAC" }, { en: "flood", uk: "розіслати всім" },
+      { en: "<p>In this case the bridge hasn’t seen this MAC yet (or the frame is broadcast or multicast). <code>br_flood()</code> sends a copy out of every port except the one it came in on, like a switch would; each copy then takes the same steps as a forwarded frame. Once the receiver answers, the bridge learns its port and later frames go only there.</p>",
+        uk: "<p>У цьому випадку bridge ще не бачив цю MAC (або кадр broadcast чи multicast). <code>br_flood()</code> шле копію на кожен порт, крім того, звідки кадр прийшов, як зробив би комутатор; кожна копія далі проходить ті самі кроки, що й переслений кадр. Щойно одержувач відповість, bridge запам’ятає його порт, і наступні кадри підуть лише туди.</p>" }],
+    [{ en: "the bridge’s own MAC", uk: "MAC самого bridge" }, { en: "up the stack as br0", uk: "нагору як br0" },
+      { en: "<p>In this case the frame is addressed to the bridge itself, for example a container talking to the host. <code>br_pass_frame_up()</code> runs the bridge <b>INPUT</b> hook, sets <code>skb->dev</code> to the bridge device (<code>br0</code>, <code>docker0</code>) and calls <code>netif_receive_skb()</code> again. The packet continues as a normal Receive, as if it had arrived on the bridge interface.</p>",
+        uk: "<p>У цьому випадку кадр адресований самому bridge, наприклад контейнер звертається до хоста. <code>br_pass_frame_up()</code> проганяє хук bridge <b>INPUT</b>, ставить <code>skb->dev</code> на bridge-пристрій (<code>br0</code>, <code>docker0</code>) і знову викликає <code>netif_receive_skb()</code>. Пакет іде далі звичайним Прийомом, ніби прийшов на інтерфейс bridge.</p>" }, { mode: "ingress", fn: "ip_rcv()" }],
+  ],
+  brPick: 0,
+  d: {
+    en: "<p>The bridge works like a switch. With VLAN filtering on, it first checks that the frame’s VLAN is allowed on this port. Then it learns: <code>br_fdb_update()</code> records that the sender’s MAC lives behind this port. Then <code>br_fdb_find_rcu()</code> looks the destination MAC up in the same forwarding table to decide where the frame goes.</p><p>All of this happens at layer 2: the IP header isn’t read for the decision, and nothing in the packet changes.</p>",
+    uk: "<p>Bridge працює як комутатор. Якщо ввімкнено VLAN filtering, спершу він перевіряє, що VLAN кадру дозволений на цьому порту. Потім запам’ятовує: <code>br_fdb_update()</code> записує, що MAC відправника живе за цим портом. Далі <code>br_fdb_find_rcu()</code> шукає MAC одержувача в тій самій таблиці пересилання, щоб вирішити, куди йде кадр.</p><p>Усе це відбувається на рівні 2: для рішення IP-заголовок не читається, і в пакеті нічого не змінюється.</p>",
+  },
+};
+
+const B_FWD: Step = {
+  l: "link", fn: "br_forward() → __br_forward()", hdr: ALL, data: "ETH", f: ["mac", "network"],
+  t: { en: "Out of the bridge port", uk: "Вихід через порт bridge" },
+  d: {
+    en: "<p>The frame passes the bridge <b>FORWARD</b> hook (with <code>br_netfilter</code>, the iptables FORWARD chain too), then <code>br_forward_finish()</code> runs the bridge <b>POSTROUTING</b> hook. <code>br_dev_queue_push_xmit()</code> moves <code>data</code> back to the Ethernet header, which is still there unchanged, and calls <code>dev_queue_xmit()</code> on the outgoing port.</p><p>Unlike IP forwarding, nothing is decremented or rewritten: TTL, MACs and checksums stay the same.</p>",
+    uk: "<p>Кадр проходить хук bridge <b>FORWARD</b> (з <code>br_netfilter</code> — і ланцюжок FORWARD iptables), потім <code>br_forward_finish()</code> проганяє хук bridge <b>POSTROUTING</b>. <code>br_dev_queue_push_xmit()</code> повертає <code>data</code> на Ethernet-заголовок, який так і лежить незмінним, і викликає <code>dev_queue_xmit()</code> на вихідному порту.</p><p>На відміну від IP-пересилання, нічого не зменшується й не переписується: TTL, MAC і контрольні суми лишаються тими самими.</p>",
+  },
+};
+
+const B_VETH: Step = {
+  l: "link", fn: "dev_queue_xmit() → veth_xmit()", hdr: ALL, data: "ETH", f: ["mac", "network"],
+  t: { en: "Through the veth pair into the container", uk: "Через veth-пару в контейнер" },
+  d: {
+    en: "<p>The outgoing port is the host end of a veth pair; the other end is <code>eth0</code> inside the container’s network namespace. A veth device has no qdisc (<code>noqueue</code>), so <code>dev_queue_xmit()</code> calls the driver straight away: <code>veth_xmit()</code>.</p><p>There is no wire: <code>veth_forward_skb()</code> hands the same <code>sk_buff</code> to the peer. <code>__dev_forward_skb()</code> scrubs what must not cross namespaces (marks, conntrack state, the route) and runs <code>eth_type_trans()</code> for the peer device, and the packet is put on the CPU’s backlog queue (<code>enqueue_to_backlog()</code>), as if a card had received it. The NET_RX softirq picks it up there.</p>",
+    uk: "<p>Вихідний порт — це кінець veth-пари з боку хоста; інший кінець — <code>eth0</code> у мережевому просторі імен контейнера. Пристрій veth не має qdisc (<code>noqueue</code>), тож <code>dev_queue_xmit()</code> одразу викликає драйвер: <code>veth_xmit()</code>.</p><p>Лінії тут нема: <code>veth_forward_skb()</code> передає той самий <code>sk_buff</code> парі. <code>__dev_forward_skb()</code> очищає те, що не повинно переходити між просторами імен (мітки, стан conntrack, маршрут), і викликає <code>eth_type_trans()</code> для пристрою-пари, а пакет стає в чергу backlog процесора (<code>enqueue_to_backlog()</code>), ніби його прийняла карта. Звідти його забирає softirq NET_RX.</p>",
+  },
+  diff: {
+    en: "<b>5.10 → 7.3.</b> The same path; 5.10 queues the packet with <code>netif_rx()</code>, 7.3 with <code>__netif_rx()</code>. With an XDP program on the veth, both use the veth’s own NAPI instead.",
+    uk: "<b>5.10 → 7.3.</b> Шлях той самий; 5.10 ставить пакет у чергу через <code>netif_rx()</code>, 7.3 — через <code>__netif_rx()</code>. Якщо на veth є XDP-програма, обидва натомість використовують власний NAPI veth.",
+  },
+};
+
+const B_POD: Step = {
+  l: "link", fn: "netif_receive_skb() → ip_rcv() in the container", data: "IP", f: ["mac", "network"],
+  t: { en: "Receive again, inside the container", uk: "Знову прийом, уже в контейнері" },
+  d: {
+    en: "<p>The packet now arrives on <code>eth0</code> inside the container’s network namespace, and from here it takes the normal Receive path: <code>netif_receive_skb()</code>, <code>ip_rcv()</code>, the routing decision, INPUT, TCP or UDP, and the container’s socket.</p><p>Everything on that path is per namespace: the container has its own interfaces, routing table, netfilter rules and sockets. The kernel and the <code>sk_buff</code> are the same; only the namespace it is processed in has changed.</p>",
+    uk: "<p>Тепер пакет приходить на <code>eth0</code> у мережевому просторі імен контейнера, і далі йде звичайним шляхом Прийому: <code>netif_receive_skb()</code>, <code>ip_rcv()</code>, рішення маршрутизації, INPUT, TCP чи UDP і сокет контейнера.</p><p>Усе на цьому шляху своє для кожного простору імен: у контейнера власні інтерфейси, таблиця маршрутизації, правила netfilter і сокети. Ядро й <code>sk_buff</code> ті самі; змінився лише простір імен, у якому пакет обробляється.</p>",
+  },
+};
+
+const T_TC: Step = {
+  l: "link", fn: "sch_handle_ingress() → tcx_run()", k510: { fn: "sch_handle_ingress() → tcf_classify_ingress()" }, data: "IP", f: ["mac", "network"],
+  t: { en: "A tc BPF program decides", uk: "Вирішує BPF-програма tc" },
+  br: [
+    [{ en: "redirect", uk: "перенаправити" }, "TC_ACT_REDIRECT",
+      { en: "The program asked for the packet to be sent somewhere else: <code>skb_do_redirect()</code> does it.", uk: "Програма попросила відправити пакет деінде: це робить <code>skb_do_redirect()</code>." }],
+    [{ en: "pass", uk: "пропустити" }, "TC_ACT_OK",
+      { en: "<p>In this case the program lets the packet continue. <code>__netif_receive_skb_core()</code> goes on with the netfilter <code>ingress</code> hook, VLAN, <code>rx_handler()</code> and finally <code>ip_rcv()</code>: a normal Receive.</p>",
+        uk: "<p>У цьому випадку програма пропускає пакет далі. <code>__netif_receive_skb_core()</code> продовжує з netfilter-хуком <code>ingress</code>, VLAN, <code>rx_handler()</code> і врешті <code>ip_rcv()</code>: звичайний Прийом.</p>" }, { mode: "ingress", fn: "ip_rcv()" }],
+    [{ en: "drop", uk: "відкинути" }, "TC_ACT_SHOT",
+      { en: "<p>In this case the program drops the packet, for example as a network policy or DDoS filter. It is freed right here, before netfilter and the IP layer ever see it.</p>",
+        uk: "<p>У цьому випадку програма відкидає пакет, наприклад як мережева політика чи фільтр DDoS. Його звільняють прямо тут, ще до netfilter і IP-рівня.</p>" }, "end"],
+  ],
+  brPick: 0,
+  d: {
+    en: "<p>The interface has a tc ingress hook with a BPF program attached, the way CNIs such as Cilium handle pod traffic. <code>sch_handle_ingress()</code> runs it inside <code>__netif_receive_skb_core()</code>, after the sniffers and before netfilter and IP. The program can read and rewrite the packet and returns a verdict: let it through, drop it, or redirect it.</p>",
+    uk: "<p>На інтерфейсі є tc-хук ingress з BPF-програмою, як це роблять CNI на кшталт Cilium для трафіку подів. <code>sch_handle_ingress()</code> запускає її всередині <code>__netif_receive_skb_core()</code>, після сниферів і до netfilter та IP. Програма може читати й змінювати пакет і повертає вердикт: пропустити, відкинути чи перенаправити.</p>",
+  },
+  diff: {
+    en: "<b>5.10 → 7.3.</b> In 5.10 BPF programs are classifiers in a clsact qdisc, run by <code>tcf_classify_ingress()</code>. 7.3 first runs programs attached through <b>tcx</b> links (<code>tcx_run()</code>), several per device, then classic tc filters.",
+    uk: "<b>5.10 → 7.3.</b> У 5.10 BPF-програми — це класифікатори в qdisc clsact, їх запускає <code>tcf_classify_ingress()</code>. 7.3 спершу запускає програми, прикріплені через <b>tcx</b> links (<code>tcx_run()</code>), кілька на пристрій, а потім класичні фільтри tc.",
+  },
+  note: CT_SCOPE,
+};
+
+const T_REDIR: Step = {
+  l: "link", fn: "skb_do_redirect()", data: "IP", f: ["mac", "network"],
+  t: { en: "Straight into the container", uk: "Одразу в контейнер" },
+  br: [
+    ["bpf_redirect_peer()", { en: "into the container’s namespace", uk: "у простір імен контейнера" },
+      { en: "The packet is handed to the veth peer inside the container without crossing the veth pair.", uk: "Пакет передається veth-парі всередині контейнера, не проходячи через саму veth-пару." }],
+    ["bpf_redirect()", { en: "to another device", uk: "на інший пристрій" },
+      { en: "<p>In this case the program redirected the packet to another device. With <code>BPF_F_INGRESS</code> it is received on that device as if it had arrived there (through the backlog queue). Without it, it is transmitted out of that device with <code>dev_queue_xmit()</code>, for example out of the host end of a veth pair, after which it goes through <code>veth_xmit()</code> like a frame from a bridge.</p>",
+        uk: "<p>У цьому випадку програма перенаправила пакет на інший пристрій. З <code>BPF_F_INGRESS</code> він приймається на тому пристрої, ніби прийшов туди (через чергу backlog). Без нього — відправляється з того пристрою через <code>dev_queue_xmit()</code>, наприклад з хостового кінця veth-пари, і далі йде через <code>veth_xmit()</code>, як кадр із bridge.</p>" }],
+  ],
+  brPick: 0,
+  d: {
+    en: "<p>The program called <code>bpf_redirect_peer()</code> with the host end of the container’s veth pair. <code>skb_do_redirect()</code> takes its peer, the container’s <code>eth0</code> (it must be in another network namespace), sets <code>skb->dev</code> to it and returns <code>-EAGAIN</code>.</p><p>That makes <code>__netif_receive_skb_core()</code> start another round with the new device. The packet skips <code>veth_xmit()</code> and the backlog queue and continues inside the container in the same softirq run, which is why this is the fast path for pod traffic.</p>",
+    uk: "<p>Програма викликала <code>bpf_redirect_peer()</code> з хостовим кінцем veth-пари контейнера. <code>skb_do_redirect()</code> бере його пару, <code>eth0</code> контейнера (вона має бути в іншому мережевому просторі імен), ставить на неї <code>skb->dev</code> і повертає <code>-EAGAIN</code>.</p><p>Через це <code>__netif_receive_skb_core()</code> починає ще одне коло вже з новим пристроєм. Пакет оминає <code>veth_xmit()</code> і чергу backlog і продовжує всередині контейнера в тому самому проході softirq; тому це швидкий шлях для трафіку подів.</p>",
+  },
+};
+
+const BRIDGE_STEPS: Step[] = [IN_LOWER[0], B_NIC, IN_LOWER[2], netif(3), B_HANDLE, B_FINISH, B_FWD, B_VETH, B_POD];
+const TCREDIR_STEPS: Step[] = [...IN_LOWER.slice(0, 3), netif(1), T_TC, T_REDIR, B_POD];
+
 /* ---------------- LIVE SYSTEM COMMANDS ---------------- */
 // Commands to observe each step on a running machine. Keyed by step `fn`; the raw incoming frame uses "wire-in".
 // Counter names (nstat) and tracepoints (perf trace) exist in both 5.10 and 7.3.
@@ -829,6 +962,14 @@ export const CMDS: Record<string, Cmd[]> = {
   "ip_mr_input()": [c("ip mroute show", "multicast routes: (source, group), incoming interface and outgoing interfaces", "multicast-маршрути: (джерело, група), вхідний і вихідні інтерфейси"), c("nstat -az IpExtInMcastPkts", "multicast packets received", "отримані multicast-пакети")],
   "ip_mr_forward()": [c("cat /proc/net/ip_mr_cache", "every cache entry with its packets, bytes and “Wrong” (arrived on the wrong interface)", "кожен запис кешу з пакетами, байтами й «Wrong» (прийшли не на той інтерфейс)")],
   "ipmr_queue_fwd_xmit() → ipmr_prepare_xmit()": [c("cat /proc/net/ip_mr_vif", "BytesOut and PktsOut per interface: copies sent out", "BytesOut і PktsOut по інтерфейсах: відправлені копії"), c("iptables -L FORWARD -v -n", "FORWARD rules with counters; multicast copies pass here too", "правила FORWARD з лічильниками; multicast-копії теж ідуть тут")],
+  "bridge port in promiscuous mode, DMA → RX ring, IRQ": [c("bridge link show", "bridge ports, their bridge and STP state (forwarding, learning…)", "порти bridge, їхній bridge і стан STP (forwarding, learning…)"), c("ip -d link show dev eth0", "“promiscuity 1” and “bridge_slave” for a bridge port", "«promiscuity 1» і «bridge_slave» для порту bridge")],
+  "br_handle_frame()": [c("nft list ruleset", "rules of the bridge family (and inet/ip families if br_netfilter sends bridged IPv4 through them)", "правила сімейства bridge (та inet/ip, якщо br_netfilter пускає через них IPv4 з bridge)"), c("sysctl net.bridge.bridge-nf-call-iptables", "whether bridged IPv4 also passes iptables (exists only when br_netfilter is loaded)", "чи проходить IPv4 з bridge ще й iptables (є лише з завантаженим br_netfilter)")],
+  "br_handle_frame_finish()": [c("bridge fdb show br br0", "the bridge’s forwarding table: which MAC was learned on which port", "таблиця пересилання bridge: яку MAC вивчено на якому порту")],
+  "br_forward() → __br_forward()": [c("ip -s link show master br0", "every port of the bridge with its packet counters", "кожен порт bridge з лічильниками пакетів")],
+  "dev_queue_xmit() → veth_xmit()": [c("ip -d link show type veth", "veth devices, their qdisc (noqueue) and the network namespace of the peer (link-netnsid)", "veth-пристрої, їхній qdisc (noqueue) і простір імен пари (link-netnsid)"), c("ethtool -S veth1234", "peer_ifindex: the interface number of the other end", "peer_ifindex: номер інтерфейсу на іншому кінці")],
+  "netif_receive_skb() → ip_rcv() in the container": [c("nsenter -t <PID> -n ip -s link", "the container’s own interfaces and counters (PID of a process in the container)", "власні інтерфейси й лічильники контейнера (PID процесу в контейнері)"), c("nsenter -t <PID> -n ss -tanp", "the container’s sockets", "сокети контейнера")],
+  "sch_handle_ingress() → tcx_run()": [c("bpftool net show dev eth0", "BPF programs attached to the device: tc, tcx and XDP", "BPF-програми на пристрої: tc, tcx і XDP"), c("tc filter show dev eth0 ingress", "classic tc ingress filters, including BPF classifiers", "класичні фільтри tc ingress, зокрема BPF-класифікатори")],
+  "skb_do_redirect()": [c("bpftool prog show", "loaded BPF programs; look for type sched_cls", "завантажені BPF-програми; шукай тип sched_cls")],
   "dst_output() → ip_mc_output()": [c("nstat -az IpExtOutMcastPkts", "multicast packets sent", "відправлені multicast-пакети")],
   "udp_rcv() → __udp4_lib_mcast_deliver()": [c("nstat -az UdpIgnoredMulti UdpInDatagrams", "multicast/broadcast datagrams no socket wanted, and datagrams read by applications", "multicast/broadcast-датаграми, яких не захотів жоден сокет, і датаграми, прочитані застосунками"), C_SS_UDP],
   "ip_forward()": [c("sysctl net.ipv4.ip_forward", "whether forwarding is enabled", "чи ввімкнене пересилання"), c("nstat -az IpForwDatagrams IpInHdrErrors", "forwarded packets, and drops such as expired TTL", "переслані пакети й дропи на кшталт вичерпаного TTL"), c("traceroute -n 1.1.1.1", "the TTL mechanism from the outside: every hop answers “time exceeded”", "механізм TTL ззовні: кожен хоп відповідає «time exceeded»")],
@@ -842,6 +983,8 @@ export function buildSteps(mode: Mode, proto: Proto): Step[] {
     : mode === "ingress" ? [...IN_LOWER, ...I_UPPER, ...(proto === "tcp" ? I_TCP : I_UDP), I_SOCK[proto], I_APP]
     : mode === "forward" ? [...IN_LOWER, ...F_MID]
     : mode === "multicast" ? MC_STEPS // multicast paths are UDP only
-    : MCROUTE_STEPS;
+    : mode === "mcroute" ? MCROUTE_STEPS
+    : mode === "bridge" ? BRIDGE_STEPS
+    : TCREDIR_STEPS;
   return list.map((st) => ({ ...st, cmd: CMDS[st.raw ? "wire-in" : st.fn] }));
 }

@@ -8,6 +8,7 @@ An interactive, step-by-step simulation of how a TCP/UDP packet moves through th
 - **Receive (ingress):** wire → RX ring → NAPI → `netif_receive_skb()` → IP + netfilter → TCP/UDP → socket → `read()`
 - **Forward:** the packet crosses the host as a router: PREROUTING → FORWARD → POSTROUTING
 - **Multicast** (from the routing decision in Receive): a group member gets a copy on every member socket; a multicast router looks the group up in its cache, checks the arrival interface and sends copies out
+- **Containers** (from `netif_receive_skb()` in Receive): a Linux bridge forwarding a frame through a veth pair into a container, and a tc BPF program redirecting it straight into the container's namespace (`bpf_redirect_peer`, as Cilium does)
 
 Each step shows the kernel function, an explanation, the `sk_buff` state (which headers exist, where `data` points, which `*_header` fields are set), the active queue and netfilter hook. A path map shows the whole route across the stack layers at once.
 

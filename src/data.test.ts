@@ -6,7 +6,7 @@ import { annotate, TERMS, termUrl } from "./glossary";
 import { UI, type Lang, type Txt } from "./i18n";
 import { buildSteps, CMDS, type Mode, type Proto, type Step } from "./steps";
 
-const MODES: Mode[] = ["egress", "ingress", "forward", "multicast", "mcroute"];
+const MODES: Mode[] = ["egress", "ingress", "forward", "multicast", "mcroute", "bridge", "tcredir"];
 const PROTOS: Proto[] = ["tcp", "udp"];
 const LANGS: Lang[] = ["en", "uk"];
 const scenarios = MODES.flatMap((m) => PROTOS.map((p) => ({ m, p, steps: buildSteps(m, p) })));
@@ -90,6 +90,11 @@ describe("branches", () => {
       steps.forEach((s, i) => {
         for (const [, , , next] of s.br ?? []) {
           if (!next || next === "end" || next === "out") continue;
+          if (typeof next === "object") {
+            // jumps to a named step of another scenario
+            expect(buildSteps(next.mode, p).some((x) => x.fn === next.fn), `${label(m, p, i, s)} → ${next.mode}/${next.fn}`).toBe(true);
+            continue;
+          }
           const target = buildSteps(next, p);
           const j = target.findIndex((x) => x.fn === s.fn);
           expect(j, `${label(m, p, i, s)} → ${next}`).toBeGreaterThanOrEqual(0);

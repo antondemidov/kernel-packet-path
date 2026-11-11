@@ -37,13 +37,13 @@ const ui = (k: UIKey) => UI[k][lang];
 const k5 = () => kernel === "5.10";
 // The multicast paths continue Receive from the routing decision; they are UDP only and have no button of their own
 const mcast = () => mode === "multicast" || mode === "mcroute";
-const modeButton = () => (mode === "multicast" ? "ingress" : mode === "mcroute" ? "forward" : mode);
+const modeButton = () => (mode === "mcroute" ? "forward" : mode === "multicast" || mode === "bridge" || mode === "tcredir" ? "ingress" : mode);
 const dOf = (s: Step) => (k5() && s.k510?.d) || s.d;
 const rank = (s: Step) => LAYER_ORDER.indexOf(s.l);
 
 /* ---------- URL: #egress-tcp, #forward-udp-7, #ingress-tcp-5-v5 … to share a scenario, step and kernel (-v5 = Linux 5.10) ---------- */
 function readHash() {
-  const m = location.hash.match(/^#(egress|ingress|forward|multicast|mcroute)-(tcp|udp)(?:-(\d+))?(-v5|-v7)?$/);
+  const m = location.hash.match(/^#(egress|ingress|forward|multicast|mcroute|bridge|tcredir)-(tcp|udp)(?:-(\d+))?(-v5|-v7)?$/);
   if (!m) return false;
   mode = m[1] as Mode;
   proto = mcast() ? "udp" : (m[2] as Proto);
@@ -124,7 +124,7 @@ function renderSkb(s: Step) {
   const fields = s.raw
     ? ""
     : `<div class="fields">${FIELDS.map((n) => `<span class="fld ${f.includes(n) ? "set" : ""}">${n}_header</span>`).join("")}</div>`;
-  state.textContent = ui(s.raw ? "skbRaw" : mode === "egress" ? "skbPush" : di === 0 ? "skbNewEth" : "skbPull");
+  state.textContent = ui(s.raw ? "skbRaw" : mode === "egress" ? "skbPush" : di === 0 ? (mode === "bridge" ? "skbSameEth" : "skbNewEth") : "skbPull");
   box.innerHTML = `<div class="skb-wrap"><div class="skb">${cells}</div>${s.raw ? "" : `<div class="ptr">${ptr}</div>`}</div>${fields}`;
 }
 
@@ -217,7 +217,8 @@ const fnOf = (s: Step) => (k5() && s.k510?.fn) || s.fn;
 /* Path map: x = step, y = stack layer. Shows the whole route at once; click a point to jump to it. */
 function renderMap() {
   const n = steps.length;
-  const LX = 64, SW = 50, RH = 24, TOP = 22;
+  // Short paths spread their steps out instead of being scaled up, so labels keep the same size
+  const LX = 64, RH = 24, TOP = 22, SW = Math.max(50, Math.floor((900 - LX - 6) / n));
   const W = LX + n * SW + 6, H = TOP + LAYER_ORDER.length * RH + 4;
   const x = (k: number) => LX + SW * k + SW / 2;
   const y = (s: Step) => TOP + RH * rank(s) + RH / 2;
@@ -356,11 +357,12 @@ $("branches").addEventListener("click", (e) => {
   const k = Number(el.dataset.b);
   const next = s.br![k][3];
   if (next && next !== "end" && next !== "out") {
-    // The packet continues as another scenario: switch to it at this same step
-    mode = next;
+    // The packet continues as another scenario: at this same step, or at the step the branch names
+    const target = typeof next === "string" ? { mode: next, fn: s.fn } : next;
+    mode = target.mode;
     if (mcast()) proto = "udp";
     steps = buildSteps(mode, proto);
-    i = Math.max(0, steps.findIndex((x) => x.fn === s.fn));
+    i = Math.max(0, steps.findIndex((x) => x.fn === target.fn));
     alt = undefined;
     reset(true);
     return;
