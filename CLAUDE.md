@@ -46,6 +46,10 @@ Terms in step texts (AF_INET, MTU, conntrack, NAPI…) get a dotted underline an
 
 - `npm run dev` — local dev server
 - `npm run build` — type check + build into `dist/`
+- `npm test` — data integrity tests (`src/data.test.ts`): both languages, well-formed HTML, branches and scenario switches, read-only commands, glossary
+- `KERNEL_5_10=… KERNEL_7_3=… npx vitest run scripts/kernel-refs.test.ts` — every kernel function/constant named in the texts must exist in the 5.10.8 / 7.3 sources (skipped without the env vars; CI runs it in `verify-kernel.yml` with sparse checkouts of net/, include/, security/)
+
+When changing step texts, re-audit the claims against the code, not memory: an independent claim-by-claim audit of all three scenarios found real errors (TIME_WAIT behaviour, STALE neighbour entries, UDP header placement, cgroup BPF on forwarded packets) that the name-existence test can't catch.
 
 ## Ideas for later
 
