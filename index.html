@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>A Packet’s Path Through the Linux Kernel</title>
+  <meta name="description" content="Interactive step-by-step simulation of how a TCP/UDP packet moves through the Linux network stack: send, receive and forward, with sk_buff state and netfilter hooks.">
+  <meta property="og:title" content="A Packet’s Path Through the Linux Kernel">
+  <meta property="og:description" content="From write() to the wire and back: step by step, with sk_buff state and netfilter hooks, for Linux 5.10 and 7.x.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='9' width='24' height='14' rx='3' fill='%23d96f0b'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="top">
+      <div class="eyebrow" id="eyebrow">Linux 5.10 · TCP/IPv4 and UDP/IPv4</div>
+      <div class="group">
+        <div class="seg sm" role="group" data-i18n-aria="kernel">
+          <button data-kernel="5.10" aria-pressed="true">Linux 5.10</button>
+          <button data-kernel="7.3" aria-pressed="false">Linux 7.3</button>
+        </div>
+        <div class="seg sm" role="group" data-i18n-aria="language">
+          <button data-lang="en" aria-pressed="true">EN</button>
+          <button data-lang="uk" aria-pressed="false">UA</button>
+        </div>
+      </div>
+    </div>
+    <h1 data-i18n="title">A Packet’s Path Through the Linux Kernel</h1>
+    <p class="lede" data-i18n-html="lede"></p>
+    <p class="sources" id="sources"></p>
+  </header>
+
+  <div class="bar">
+    <div class="group">
+      <div class="seg" role="group" data-i18n-aria="direction">
+        <button data-mode="egress" aria-pressed="true" data-i18n="egress">Send</button>
+        <button data-mode="ingress" aria-pressed="false" data-i18n="ingress">Receive</button>
+        <button data-mode="forward" aria-pressed="false" data-i18n="forward">Forward</button>
+      </div>
+      <div class="seg" role="group" data-i18n-aria="protocol">
+        <button data-proto="tcp" aria-pressed="true">TCP</button>
+        <button data-proto="udp" aria-pressed="false">UDP</button>
+      </div>
+    </div>
+    <div class="group">
+      <button class="btn" id="prev" data-i18n="prev" data-i18n-aria="prevAria">← Back</button>
+      <span class="counter" id="counter">1 / 1</span>
+      <button class="btn" id="next" data-i18n="next" data-i18n-aria="nextAria">Next →</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="stack" id="stack">
+      <div class="layer" data-l="app"><div class="name" data-i18n="layApp"></div><div class="sub" data-i18n="layAppSub"></div></div>
+      <div class="boundary" data-i18n="bndSyscall"></div>
+      <div class="layer kernel" data-l="socket"><div class="name" data-i18n="laySock"></div><div class="sub" data-i18n="laySockSub"></div>
+        <div class="queues"><span class="q" data-q="wq">socket write queue</span><span class="q" data-q="rq">socket receive queue</span></div></div>
+      <div class="layer kernel" data-l="transport"><div class="name" id="l4name"></div><div class="sub" data-i18n="layL4Sub"></div></div>
+      <div class="layer kernel" data-l="ip"><div class="name">IPv4 + netfilter</div><div class="sub" data-i18n="layIpSub"></div></div>
+      <div class="layer kernel" data-l="link"><div class="name" data-i18n="layDev"></div><div class="sub" data-i18n="layDevSub"></div>
+        <div class="queues"><span class="q" data-q="qdisc">qdisc</span></div></div>
+      <div class="boundary" data-i18n="bndDma"></div>
+      <div class="layer" data-l="nic"><div class="name">NIC</div><div class="sub" data-i18n="layNicSub"></div>
+        <div class="queues"><span class="q" data-q="txring">TX ring</span><span class="q" data-q="rxring">RX ring</span></div></div>
+      <div class="layer" data-l="wire"><div class="name" data-i18n="layWire"></div><div class="sub" data-i18n="layWireSub"></div></div>
+      <div class="pkt" id="pkt"><span class="dir" id="dir">↓</span><span class="dot" id="dot">data</span></div>
+    </div>
+
+    <div class="detail">
+      <div class="card" aria-live="polite">
+        <div class="eyebrow" id="where"></div>
+        <div class="fn" id="fn"></div>
+        <div class="step-title" id="title"></div>
+        <div class="desc" id="desc"></div>
+        <div class="branches" id="branches" hidden></div>
+        <div class="note" id="note" hidden></div>
+        <div class="note v7" id="v7" hidden></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2 data-i18n="skbH"></h2><span class="eyebrow" id="skbstate">sk_buff</span></div>
+        <div id="skb"></div>
+        <div class="legend">
+          <span><i style="background:var(--eth)"></i>Ethernet</span><span><i style="background:var(--ip)"></i>IPv4</span>
+          <span><i style="background:var(--l4)"></i><span id="lgl4">TCP</span></span><span><i style="background:var(--pay)"></i><span data-i18n="lgData"></span></span>
+          <span><i class="lg-absent"></i><span data-i18n="lgAbsent"></span></span><span><i class="lg-stripped"></i><span data-i18n="lgStripped"></span></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2 data-i18n="hooksH"></h2><span class="eyebrow" data-i18n="hooksSub"></span></div>
+        <div class="hooks" id="hooks"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card map-card">
+    <div class="card-h"><h2 data-i18n="mapH"></h2><span class="eyebrow" data-i18n="mapSub"></span></div>
+    <div class="map" id="map"></div>
+  </div>
+
+  <section>
+    <h2 class="section-h" data-i18n="stepsH"></h2>
+    <ol class="steps" id="steps"></ol>
+  </section>
+
+  <footer class="foot"><a href="https://github.com/antondemidov" target="_blank" rel="noopener">github.com/antondemidov</a></footer>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
