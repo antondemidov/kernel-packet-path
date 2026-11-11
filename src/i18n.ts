@@ -19,8 +19,8 @@ export const UI = {
     uk: "Покрокова симуляція за статтею A. Stephan, L. Wüstrich, <a href=\"https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2024-04-1/NET-2024-04-1_16.pdf\" target=\"_blank\" rel=\"noopener\">«The Path of a Packet Through the Linux Kernel»</a> (TUM, 2024). Симуляція показує звичайний шлях пакета; там, де ядро ухвалює рішення, можна обрати інший варіант і подивитися, куди тоді піде пакет. Гортай кроки стрілками ← → або клікай точки на карті шляху.",
   },
   sources: {
-    en: "Every step is checked against the kernel source: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">Linux {ver} on Elixir</a>; function names link to their definitions. The walkthrough follows Linux 7.3; switch to 5.10, the kernel the paper describes, to see it as it was there. Blue “5.10 → 7.3” boxes show what differs between the two; grey “Correction” boxes mark where the paper simplifies or disagrees with the code. The “Forward” and “Multicast” scenarios aren’t in the paper and are built from the code.",
-    uk: "Кожен крок звірено з кодом ядра: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">Linux {ver} на Elixir</a>; назви функцій ведуть до їхніх визначень. Симуляція показує Linux 7.3; перемкнися на 5.10, ядро, яке описує стаття, щоб побачити, як було там. Сині блоки «5.10 → 7.3» — чим відрізняються ці ядра; сірі «Уточнення» — де стаття спрощує або розходиться з кодом. Сценаріїв «Пересилання» і «Multicast» у статті нема, вони зібрані за кодом.",
+    en: "Every step is checked against the kernel source: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">Linux {ver} on Elixir</a>; function names link to their definitions. The walkthrough follows Linux 7.3; switch to 5.10, the kernel the paper describes, to see it as it was there. Blue “5.10 → 7.3” boxes show what differs between the two; grey “Correction” boxes mark where the paper simplifies or disagrees with the code. The “Forward” scenario and the multicast paths (pick the multicast outcome at the routing decision) aren’t in the paper and are built from the code.",
+    uk: "Кожен крок звірено з кодом ядра: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">Linux {ver} на Elixir</a>; назви функцій ведуть до їхніх визначень. Симуляція показує Linux 7.3; перемкнися на 5.10, ядро, яке описує стаття, щоб побачити, як було там. Сині блоки «5.10 → 7.3» — чим відрізняються ці ядра; сірі «Уточнення» — де стаття спрощує або розходиться з кодом. Сценарію «Пересилання» і шляхів multicast (обери варіант multicast на кроці маршрутизації) у статті нема, вони зібрані за кодом.",
   },
   direction: { en: "Direction", uk: "Напрям" },
   protocol: { en: "Protocol", uk: "Протокол" },
@@ -29,7 +29,6 @@ export const UI = {
   egress: { en: "Send", uk: "Відправка" },
   ingress: { en: "Receive", uk: "Прийом" },
   forward: { en: "Forward", uk: "Пересилання" },
-  multicast: { en: "Multicast", uk: "Multicast" },
   tcpNoMc: { en: "Multicast works over UDP only", uk: "Multicast працює лише через UDP" },
   prev: { en: "← Back", uk: "← Назад" },
   next: { en: "Next →", uk: "Далі →" },

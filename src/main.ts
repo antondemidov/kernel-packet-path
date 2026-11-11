@@ -35,15 +35,18 @@ const t = (x: Txt) => tr(x, lang);
 const ui = (k: UIKey) => UI[k][lang];
 // 7.3 is the default; 5.10 shows its own text where a step has one
 const k5 = () => kernel === "5.10";
+// The multicast paths continue Receive from the routing decision; they are UDP only and have no button of their own
+const mcast = () => mode === "multicast" || mode === "mcroute";
+const modeButton = () => (mode === "multicast" ? "ingress" : mode === "mcroute" ? "forward" : mode);
 const dOf = (s: Step) => (k5() && s.k510?.d) || s.d;
 const rank = (s: Step) => LAYER_ORDER.indexOf(s.l);
 
 /* ---------- URL: #egress-tcp, #forward-udp-7, #ingress-tcp-5-v5 … to share a scenario, step and kernel (-v5 = Linux 5.10) ---------- */
 function readHash() {
-  const m = location.hash.match(/^#(egress|ingress|forward|multicast)-(tcp|udp)(?:-(\d+))?(-v5|-v7)?$/);
+  const m = location.hash.match(/^#(egress|ingress|forward|multicast|mcroute)-(tcp|udp)(?:-(\d+))?(-v5|-v7)?$/);
   if (!m) return false;
   mode = m[1] as Mode;
-  proto = m[1] === "multicast" ? "udp" : (m[2] as Proto);
+  proto = mcast() ? "udp" : (m[2] as Proto);
   kernel = m[4] === "-v5" ? "5.10" : "7.3"; // "-v7" is accepted for old links
   steps = buildSteps(mode, proto);
   i = m[3] ? Math.min(steps.length - 1, Math.max(0, +m[3] - 1)) : 0;
@@ -276,11 +279,11 @@ function renderList() {
 }
 
 function syncToggles() {
-  document.querySelectorAll<HTMLElement>("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+  document.querySelectorAll<HTMLElement>("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === modeButton())));
   document.querySelectorAll<HTMLButtonElement>("[data-proto]").forEach((b) => {
     b.setAttribute("aria-pressed", String(b.dataset.proto === proto));
     // multicast is UDP only
-    b.disabled = mode === "multicast" && b.dataset.proto === "tcp";
+    b.disabled = mcast() && b.dataset.proto === "tcp";
     b.title = b.disabled ? ui("tcpNoMc") : "";
   });
   document.querySelectorAll<HTMLElement>("[data-kernel]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.kernel === kernel)));
@@ -355,7 +358,7 @@ $("branches").addEventListener("click", (e) => {
   if (next && next !== "end" && next !== "out") {
     // The packet continues as another scenario: switch to it at this same step
     mode = next;
-    if (mode === "multicast") proto = "udp";
+    if (mcast()) proto = "udp";
     steps = buildSteps(mode, proto);
     i = Math.max(0, steps.findIndex((x) => x.fn === s.fn));
     alt = undefined;
@@ -386,7 +389,6 @@ function go(d: number) {
 document.querySelectorAll<HTMLElement>("[data-mode]").forEach((b) => {
   b.onclick = () => {
     mode = b.dataset.mode as Mode;
-    if (mode === "multicast") proto = "udp";
     reset();
   };
 });

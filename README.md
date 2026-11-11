@@ -7,7 +7,7 @@ An interactive, step-by-step simulation of how a TCP/UDP packet moves through th
 - **Send (egress):** `write()` → socket → TCP/UDP → IP + netfilter → neighbour/ARP → qdisc → TX ring → wire
 - **Receive (ingress):** wire → RX ring → NAPI → `netif_receive_skb()` → IP + netfilter → TCP/UDP → socket → `read()`
 - **Forward:** the packet crosses the host as a router: PREROUTING → FORWARD → POSTROUTING
-- **Multicast:** joining a group (IGMP, the card's MAC filter), then a UDP datagram for the group delivered to every member socket
+- **Multicast** (from the routing decision in Receive): a group member gets a copy on every member socket; a multicast router looks the group up in its cache, checks the arrival interface and sends copies out
 
 Each step shows the kernel function, an explanation, the `sk_buff` state (which headers exist, where `data` points, which `*_header` fields are set), the active queue and netfilter hook. A path map shows the whole route across the stack layers at once.
 

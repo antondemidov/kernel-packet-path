@@ -34,7 +34,7 @@ const funcs = (s: string) => [...s.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\(\)/g)].
 // Constants like NF_INET_FORWARD or TCP_TIME_WAIT: upper case with an underscore, alone in a <code>
 const consts = (html: string) => codeOf(html).filter((c) => /^[A-Z][A-Z0-9_]*_[A-Z0-9_]+$/.test(c));
 
-const all: Step[] = (["egress", "ingress", "forward", "multicast"] as Mode[]).flatMap((m) => (["tcp", "udp"] as Proto[]).flatMap((p) => buildSteps(m, p)));
+const all: Step[] = (["egress", "ingress", "forward", "multicast", "mcroute"] as Mode[]).flatMap((m) => (["tcp", "udp"] as Proto[]).flatMap((p) => buildSteps(m, p)));
 
 function refs(pick: (s: Step) => string[]) {
   const f = new Set<string>();
