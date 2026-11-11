@@ -68,6 +68,8 @@ export const UI = {
   skbNewEth: { en: "new Ethernet header pushed in front", uk: "новий Ethernet-заголовок додано спереду" },
   skbPull: { en: "headers stripped by moving data", uk: "заголовки знімаються зсувом data" },
 
+  brOpen: { en: "Open this path →", uk: "Відкрити цей шлях →" },
+  brHere: { en: "This scenario takes this branch.", uk: "Цей сценарій іде саме цією гілкою." },
   v7none: { en: "No notable changes in Linux 7.x for this step.", uk: "У Linux 7.x цей крок суттєво не змінився." },
   v7mark: { en: "changed in 7.x", uk: "змінено в 7.x" },
 

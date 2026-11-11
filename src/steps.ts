@@ -13,6 +13,12 @@ export type Field = "mac" | "network" | "transport";
 export type Queue = "wq" | "rq" | "qdisc" | "txring" | "rxring";
 export type Hook = "PRE_ROUTING" | "LOCAL_IN" | "FORWARD" | "LOCAL_OUT" | "POST_ROUTING";
 
+export interface BranchGo {
+  mode: Mode;
+  /** `fn` of the target step; looked up at click time, so step numbering can change freely */
+  fn: string;
+}
+
 export interface Step {
   l: Layer;
   fn: string;
@@ -29,7 +35,8 @@ export interface Step {
   f?: Field[];
   q?: Queue;
   hook?: Hook;
-  br?: [Txt, Txt][];
+  /** Branch: label, short note, longer explanation shown on click, optional jump to the scenario that takes it */
+  br?: [Txt, Txt, Txt?, BranchGo?][];
   brPick?: number;
   note?: Txt;
   /** What differs in Linux 7.x: optional new function name and an explanation */
@@ -141,10 +148,14 @@ const E_TCP: Step[] = [
     l: "ip", fn: "__ip_queue_xmit()", hdr: L3, data: "IP", f: F_NT,
     t: { en: "Routing and the IP header", uk: "Маршрутизація і IP-заголовок" },
     br: [
-      ["skb->_skb_refdst", { en: "route already in skb", uk: "маршрут уже в skb" }],
-      [{ en: "sk (socket)", uk: "sk (сокет)" }, { en: "cached in the connected socket", uk: "збережений у з’єднаному сокеті" }],
-      ["FIB", { en: "forwarding table", uk: "таблиця пересилання" }],
-      ["EHOSTUNREACH", { en: "no route → stop", uk: "маршруту нема → стоп" }],
+      ["skb->_skb_refdst", { en: "route already in skb", uk: "маршрут уже в skb" },
+        { en: "The caller already attached a route to the sk_buff, so no lookup is needed.", uk: "Той, хто викликав, уже прикріпив маршрут до sk_buff, тож шукати нічого не треба." }],
+      [{ en: "sk (socket)", uk: "sk (сокет)" }, { en: "cached in the connected socket", uk: "збережений у з’єднаному сокеті" },
+        { en: "An established TCP socket caches its route. While it is still valid, the kernel reuses it without a lookup. This is the usual case.", uk: "Встановлений TCP-сокет кешує свій маршрут. Поки він дійсний, ядро бере його без пошуку. Це звичайний випадок." }],
+      ["FIB", { en: "forwarding table", uk: "таблиця пересилання" },
+        { en: "No cached route (new connection, or the cached one became invalid): a full lookup in the routing tables, and the result is cached in the socket.", uk: "Закешованого маршруту нема (нове з’єднання або старий став недійсним): повний пошук у таблицях маршрутизації, і результат кешується в сокеті." }],
+      ["EHOSTUNREACH", { en: "no route → stop", uk: "маршруту нема → стоп" },
+        { en: "No route to the destination: the packet is dropped and TCP gets the error “No route to host”.", uk: "Маршруту до одержувача нема: пакет відкидається, а TCP отримує помилку «No route to host»." }],
     ],
     brPick: 1,
     d: {
@@ -167,8 +178,10 @@ const E_UDP: Step[] = [
     l: "ip", fn: "ip_route_output_flow()", user: true,
     t: { en: "Route lookup in the FIB", uk: "Пошук маршруту в FIB" },
     br: [
-      ["FIB", { en: "route found", uk: "знайдено маршрут" }],
-      ["ENETUNREACH", { en: "no route → error in sendto()", uk: "нема маршруту → помилка в sendto()" }],
+      ["FIB", { en: "route found", uk: "знайдено маршрут" },
+        { en: "A route exists: the datagram can be built and sent.", uk: "Маршрут є: датаграм можна збирати й відправляти." }],
+      ["ENETUNREACH", { en: "no route → error in sendto()", uk: "нема маршруту → помилка в sendto()" },
+        { en: "No route: nothing is sent, and sendto() returns an error such as “Network is unreachable”.", uk: "Маршруту нема: нічого не відправляється, а sendto() повертає помилку на кшталт «Network is unreachable»." }],
     ],
     brPick: 0,
     d: {
@@ -240,8 +253,10 @@ const neigh = (extra: Tx = { en: "", uk: "" }): Step => ({
   l: "link", fn: "ip_finish_output2() → neigh_output()", hdr: ALL, data: "ETH", f: F_NT,
   t: { en: "Who is the next hop: neighbour cache and ARP", uk: "Хто наступний хоп: кеш сусідів і ARP" },
   br: [
-    ["neigh_hh_output()", { en: "MAC known, cached header", uk: "MAC відома, заголовок у кеші" }],
-    ["neigh_resolve_output()", { en: "ARP request, packet waits", uk: "ARP-запит, пакет чекає" }],
+    ["neigh_hh_output()", { en: "MAC known, cached header", uk: "MAC відома, заголовок у кеші" },
+        { en: "The neighbour entry is valid and has a ready-made Ethernet header cached; it is copied in front of the packet. The fast, common case.", uk: "Запис сусіда дійсний і має закешований готовий Ethernet-заголовок; його копіюють перед пакетом. Швидкий і звичайний випадок." }],
+    ["neigh_resolve_output()", { en: "ARP request, packet waits", uk: "ARP-запит, пакет чекає" },
+        { en: "The MAC isn’t known yet: an ARP request goes out and the packet waits on the neighbour’s queue. If nobody answers, the queued packets are dropped and reported as “host unreachable”.", uk: "MAC ще невідома: йде ARP-запит, а пакет чекає в черзі сусіда. Якщо ніхто не відповість, пакети з черги відкидаються з повідомленням «host unreachable»." }],
   ],
   brPick: 0,
   d: {
@@ -340,11 +355,16 @@ const IN_LOWER: Step[] = [
     l: "link", fn: "netif_receive_skb()", data: "IP", f: ["mac", "network"],
     t: { en: "Who gets the packet", uk: "Кому віддати пакет" },
     br: [
-      ["ptype_all", { en: "tcpdump / AF_PACKET get a copy", uk: "копія для tcpdump / AF_PACKET" }],
-      ["tc / nf ingress", { en: "may drop or redirect", uk: "можуть відкинути чи перенаправити" }],
-      ["VLAN", { en: "to the VLAN interface", uk: "на VLAN-інтерфейс" }],
-      ["rx_handler()", { en: "bridge / bond takes the packet", uk: "bridge / bond забирає пакет" }],
-      ["ip_rcv()", { en: "plain IPv4", uk: "звичайний IPv4" }],
+      ["ptype_all", { en: "tcpdump / AF_PACKET get a copy", uk: "копія для tcpdump / AF_PACKET" },
+        { en: "Every AF_PACKET socket (tcpdump, Wireshark) is shown the packet and may take a copy. The packet itself continues; this branch never ends its path.", uk: "Кожному AF_PACKET-сокету (tcpdump, Wireshark) показують пакет, і він може взяти копію. Сам пакет іде далі; ця гілка ніколи не завершує його шлях." }],
+      ["tc / nf ingress", { en: "may drop or redirect", uk: "можуть відкинути чи перенаправити" },
+        { en: "tc filters and BPF programs (used by Kubernetes CNIs such as Cilium) and nftables ingress chains run here. They can drop the packet or redirect it to another device.", uk: "Тут працюють фільтри й BPF-програми tc (ними користуються CNI для Kubernetes, як-от Cilium) і ingress-ланцюжки nftables. Вони можуть відкинути пакет або перенаправити на інший пристрій." }],
+      ["VLAN", { en: "to the VLAN interface", uk: "на VLAN-інтерфейс" },
+        { en: "A frame with an 802.1Q tag is handed to the matching VLAN interface (e.g. eth0.100) and processed again as if it had arrived there.", uk: "Кадр з міткою 802.1Q передається відповідному VLAN-інтерфейсу (наприклад, eth0.100) і обробляється знову, ніби прийшов туди." }],
+      ["rx_handler()", { en: "bridge / bond takes the packet", uk: "bridge / bond забирає пакет" },
+        { en: "The interface is a bridge port or a bond member, so the bridge or bond takes the frame. A bridge may forward it at layer 2 to another port without the IP layer ever seeing it.", uk: "Інтерфейс — порт bridge або учасник bond, тож кадр забирає bridge чи bond. Bridge може переслати його на рівні 2 на інший порт, і IP-рівень його навіть не побачить." }],
+      ["ip_rcv()", { en: "plain IPv4", uk: "звичайний IPv4" },
+        { en: "An ordinary IPv4 frame: it goes to the IPv4 handler.", uk: "Звичайний IPv4-кадр: він іде до обробника IPv4." }],
     ],
     brPick: 4,
     d: {
@@ -382,9 +402,12 @@ const routeDecision = (pick: number, d: Txt): Step => ({
   l: "ip", fn: "ip_rcv_finish() → dst_input()", data: "IP", f: F_ALL,
   t: { en: "Routing decision", uk: "Рішення маршрутизації" },
   br: [
-    ["ip_forward()", { en: "not for us → forward", uk: "не нам → пересилання" }],
-    ["ip_local_deliver()", { en: "for us → up the stack", uk: "нам → нагору по стеку" }],
-    ["ip_mr_input()", "multicast"],
+    ["ip_forward()", { en: "not for us → forward", uk: "не нам → пересилання" },
+        { en: "The destination is another host and forwarding is enabled: the packet is routed onward without going up the stack.", uk: "Одержувач — інший хост, і пересилання ввімкнене: пакет маршрутизується далі, не піднімаючись по стеку." }, { mode: "forward", fn: "ip_forward()" }],
+    ["ip_local_deliver()", { en: "for us → up the stack", uk: "нам → нагору по стеку" },
+        { en: "The destination is one of this host’s own addresses: the packet goes up to TCP/UDP and a socket.", uk: "Одержувач — одна з власних адрес цього хоста: пакет іде нагору до TCP/UDP і сокета." }, { mode: "ingress", fn: "ip_local_deliver()" }],
+    ["ip_mr_input()", "multicast",
+        { en: "Multicast routing: used when the destination is a multicast group outside 224.0.0.x and multicast forwarding is enabled on the interface (by a routing daemon such as pimd or smcroute). The packet may be sent out on several interfaces, and also delivered locally if this host has joined the group.", uk: "Multicast-маршрутизація: коли одержувач — multicast-група поза 224.0.0.x і на інтерфейсі ввімкнене multicast-пересилання (його вмикає демон маршрутизації, як-от pimd чи smcroute). Пакет може піти на кілька інтерфейсів, а якщо хост сам підписаний на групу, ще й доставитися локально." }],
   ],
   brPick: pick, d,
 });
@@ -409,9 +432,12 @@ const I_TCP: Step[] = [
     l: "transport", fn: "tcp_v4_rcv()", data: "L4", f: F_ALL,
     t: { en: "Validation and socket lookup", uk: "Перевірка і пошук сокета" },
     br: [
-      ["TCP_NEW_SYN_RECV", { en: "new connection request", uk: "новий запит на з’єднання" }],
-      ["TCP_TIME_WAIT", { en: "connection closed", uk: "з’єднання закрито" }],
-      ["ESTABLISHED", { en: "regular segment", uk: "звичайний сегмент" }],
+      ["TCP_NEW_SYN_RECV", { en: "new connection request", uk: "новий запит на з’єднання" },
+        { en: "A handshake is in progress: we got a SYN and replied with SYN-ACK. If this is the final ACK, a full socket is created and the connection waits in the listen queue for accept().", uk: "Триває handshake: прийшов SYN, ми відповіли SYN-ACK. Якщо це завершальний ACK, створюється повноцінний сокет, і з’єднання чекає в черзі прослуховування на accept()." }],
+      ["TCP_TIME_WAIT", { en: "connection closed", uk: "з’єднання закрито" },
+        { en: "The connection was closed recently. The kernel keeps a small TIME_WAIT entry to absorb late segments: most are dropped, but a new SYN may open the connection again.", uk: "З’єднання нещодавно закрили. Ядро тримає маленький запис TIME_WAIT, щоб поглинути запізнілі сегменти: більшість відкидається, але новий SYN може відкрити з’єднання знову." }],
+      ["ESTABLISHED", { en: "regular segment", uk: "звичайний сегмент" },
+        { en: "The usual case: the segment belongs to an open connection.", uk: "Звичайний випадок: сегмент належить відкритому з’єднанню." }],
     ],
     brPick: 2,
     d: {
@@ -433,8 +459,10 @@ const I_TCP: Step[] = [
     l: "transport", fn: "tcp_v4_do_rcv() → tcp_rcv_established()", data: "PAY", f: F_ALL, q: "rq",
     t: { en: "Fast path or slow path", uk: "Fast path чи slow path" },
     br: [
-      ["fast path", { en: "expected segment, minimal checks", uk: "очікуваний сегмент, мінімум перевірок" }],
-      ["slow path", { en: "more checks and lookups", uk: "більше перевірок і пошуків" }],
+      ["fast path", { en: "expected segment, minimal checks", uk: "очікуваний сегмент, мінімум перевірок" },
+        { en: "The segment is exactly what was expected next: data is queued for the reader almost without checks.", uk: "Сегмент — саме той, що очікувався наступним: дані стають у чергу читача майже без перевірок." }],
+      ["slow path", { en: "more checks and lookups", uk: "більше перевірок і пошуків" },
+        { en: "Out-of-order data, unusual flags or a window change: full validation, and out-of-order segments wait in a separate queue until the gap is filled.", uk: "Дані не по порядку, незвичні прапори чи зміна вікна: повна перевірка, а сегменти не по порядку чекають в окремій черзі, поки не заповниться пропуск." }],
     ],
     brPick: 0,
     d: {
@@ -449,8 +477,10 @@ const I_UDP: Step[] = [
     l: "transport", fn: "udp_rcv() → __udp4_lib_rcv()", data: "L4", f: F_ALL, q: "rq",
     t: { en: "Socket lookup by port", uk: "Пошук сокета за портом" },
     br: [
-      [{ en: "socket found", uk: "сокет знайдено" }, "udp_queue_rcv_skb()"],
-      [{ en: "no socket", uk: "нема сокета" }, "ICMP port unreachable"],
+      [{ en: "socket found", uk: "сокет знайдено" }, "udp_queue_rcv_skb()",
+        { en: "A socket is bound to this port: the datagram goes to its receive queue and the reader is woken up.", uk: "До цього порту прив’язаний сокет: датаграм іде в його чергу прийому, і читача будять." }],
+      [{ en: "no socket", uk: "нема сокета" }, "ICMP port unreachable",
+        { en: "Nobody listens on the port: the datagram is dropped and an ICMP “port unreachable” goes back (rate-limited). This is how a UDP port scan sees closed ports.", uk: "Порт ніхто не слухає: датаграм відкидається, а назад іде ICMP «port unreachable» (з обмеженням частоти). Саме так сканер UDP-портів бачить закриті порти." }],
     ],
     brPick: 0,
     d: {
@@ -523,9 +553,12 @@ const F_MID: Step[] = [
     l: "ip", fn: "ip_forward()", data: "IP", f: F_ALL,
     t: { en: "Checks on a transit packet", uk: "Перевірки транзитного пакета" },
     br: [
-      ["TTL > 1", { en: "packet moves on", uk: "пакет іде далі" }],
-      ["TTL ≤ 1", { en: "ICMP time exceeded → how traceroute works", uk: "ICMP time exceeded → так працює traceroute" }],
-      [{ en: "> MTU and DF", uk: "> MTU і DF" }, "ICMP fragmentation needed (PMTUD)"],
+      ["TTL > 1", { en: "packet moves on", uk: "пакет іде далі" },
+        { en: "Enough TTL left: the packet moves on, with TTL decremented by one.", uk: "TTL вистачає: пакет іде далі, а TTL зменшується на один." }],
+      ["TTL ≤ 1", { en: "ICMP time exceeded → how traceroute works", uk: "ICMP time exceeded → так працює traceroute" },
+        { en: "TTL would reach zero: the packet is dropped and the sender gets ICMP “time exceeded”. traceroute relies on exactly this.", uk: "TTL дійде до нуля: пакет відкидається, а відправник отримує ICMP «time exceeded». Саме на цьому працює traceroute." }],
+      [{ en: "> MTU and DF", uk: "> MTU і DF" }, "ICMP fragmentation needed (PMTUD)",
+        { en: "Too big for the outgoing link and must not be fragmented: dropped, and the sender gets ICMP “fragmentation needed” with the right MTU (Path MTU Discovery).", uk: "Завеликий для вихідного каналу, а ділити не можна: пакет відкидається, а відправник отримує ICMP «fragmentation needed» з потрібним MTU (Path MTU Discovery)." }],
     ],
     brPick: 0,
     d: {

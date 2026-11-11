@@ -147,7 +147,7 @@ function render() {
   const br = $("branches");
   br.hidden = !s.br;
   br.innerHTML = s.br
-    ? s.br.map(([a, b], k) => `<span class="br ${k === s.brPick ? "pick" : ""}">${k === s.brPick ? "✓ " : ""}${t(a)} <span>· ${t(b)}</span></span>`).join("")
+    ? s.br.map(([a, b, info], k) => `<button type="button" class="br ${k === s.brPick ? "pick" : ""}" data-b="${k}" ${info ? "" : "disabled"}>${k === s.brPick ? "✓ " : ""}${t(a)} <span>· ${t(b)}</span></button>`).join("")
     : "";
 
   const visited = new Set(steps.map((x) => x.l));
@@ -268,12 +268,27 @@ document.body.append(tip);
 let tipFor: HTMLElement | null = null;
 let hideTimer: number | undefined;
 
+function termTip(el: HTMLElement) {
+  const k = Number(el.dataset.t);
+  const term = TERMS[k];
+  return `<b>${esc(el.textContent ?? "")}</b> ${esc(term.def[lang])} <a href="${termUrl(k, lang)}" target="_blank" rel="noopener">${SOURCE_LABEL[term.src][lang]} ↗</a>`;
+}
+
+// What happens on a branch; branches taken by another scenario get a button that opens it
+function branchTip(el: HTMLElement) {
+  const s = steps[i];
+  const k = Number(el.dataset.b);
+  const [label, , info, go] = s.br![k];
+  let html = `<b>${esc(t(label))}</b> ${esc(t(info!))}`;
+  if (k === s.brPick) html += `<span class="tip-here">${ui("brHere")}</span>`;
+  else if (go) html += `<button type="button" class="tip-go" data-go-mode="${go.mode}" data-fn="${esc(go.fn)}">${ui("brOpen")}</button>`;
+  return html;
+}
+
 function showTip(el: HTMLElement) {
   clearTimeout(hideTimer);
   if (tipFor === el && !tip.hidden) return;
-  const k = Number(el.dataset.t);
-  const term = TERMS[k];
-  tip.innerHTML = `<b>${esc(el.textContent ?? "")}</b> ${esc(term.def[lang])} <a href="${termUrl(k, lang)}" target="_blank" rel="noopener">${SOURCE_LABEL[term.src][lang]} ↗</a>`;
+  tip.innerHTML = el.matches(".br") ? branchTip(el) : termTip(el);
   tip.hidden = false;
   tipFor = el;
   const r = el.getBoundingClientRect();
@@ -289,15 +304,25 @@ function hideTip() {
 }
 const hideSoon = () => { hideTimer = window.setTimeout(hideTip, 200); };
 const termOf = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>(".term");
+const tipTarget = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>(".term, .br[data-b]");
 
 document.addEventListener("mouseover", (e) => { const el = termOf(e); if (el) showTip(el); });
 document.addEventListener("mouseout", (e) => { if (termOf(e)) hideSoon(); });
 document.addEventListener("focusin", (e) => { const el = termOf(e); if (el) showTip(el); });
 document.addEventListener("focusout", (e) => { if (termOf(e) && !tip.contains(e.relatedTarget as Node)) hideSoon(); });
 document.addEventListener("click", (e) => {
-  const el = termOf(e);
+  const el = tipTarget(e);
   if (el) showTip(el);
   else if (!tip.contains(e.target as Node)) hideTip();
+});
+tip.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLElement>(".tip-go");
+  if (!btn) return;
+  mode = btn.dataset.goMode as Mode;
+  steps = buildSteps(mode, proto);
+  i = Math.max(0, steps.findIndex((x) => x.fn === btn.dataset.fn));
+  reset(true);
+  window.scrollTo({ top: $("where").getBoundingClientRect().top + window.scrollY - 80, behavior: "smooth" });
 });
 tip.addEventListener("mouseenter", () => clearTimeout(hideTimer));
 tip.addEventListener("mouseleave", hideSoon);
