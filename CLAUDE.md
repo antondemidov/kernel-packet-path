@@ -36,7 +36,7 @@ Terms in step texts (AF_INET, MTU, conntrack, NAPI…) get a dotted underline an
 - `user` — data is in user space, no sk_buff yet; `raw` — raw frame in the RX ring
 - `hdr` — (egress) headers built so far; `data` — where `skb->data` points
 - `f` — which of `mac/network/transport_header` are set; `q` — active queue; `hook` — netfilter hook
-- `br` + `brPick` — branch point and the chosen option; each branch is `[label, short note, explanation, go?]`. Clicking a branch moves the check mark to it and replaces the step description with that branch's explanation (a "what if" view with a way back); `go: { mode, fn }` adds a button that opens the scenario taking that branch (looked up by `fn`, so step numbers can change). Explanations follow the same accuracy rule as step text.
+- `br` + `brPick` — decision point and the usual outcome; each branch is `[label, short note, full description, next?]`. Picking a branch shows its description and changes what follows: `next` omitted = same following steps; `"end"` = the packet's path ends here (later steps fade, Next is disabled); `"out"` = continues in code the walkthrough doesn't cover; a `Mode` = switch to that scenario at the same step (matched by `fn`). Branch descriptions follow the same accuracy rule as step text.
 - `note` — clarification
 - `t`, `d`, `note`, `br` labels are `Txt`: a plain string (same in both languages) or `{ en, uk }`
 - `v7` — `{ fn?, note }`: optional renamed function and what changed in Linux 7.x

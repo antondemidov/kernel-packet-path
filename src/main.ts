@@ -22,8 +22,10 @@ let mode: Mode = "egress";
 let proto: Proto = "tcp";
 let steps: Step[] = buildSteps(mode, proto);
 let i = 0;
-// A branch the reader clicked to see "what if"; only valid for the step it was chosen on
+// A branch the reader picked instead of the usual one; only valid for the step it was chosen on
 let alt: { key: string; k: number } | undefined;
+// Set when the picked branch ends the packet's path (or leaves the walkthrough) at step i
+let cutAt: number | undefined;
 
 const stack = $("stack");
 const pkt = $("pkt");
@@ -137,16 +139,14 @@ function render() {
   const key = `${mode}-${proto}-${i}`;
   const altK = alt?.key === key && alt.k !== s.brPick ? alt.k : undefined;
   const shown = altK ?? s.brPick;
-  const altBox = $("alt");
-  altBox.hidden = altK === undefined;
+  cutAt = undefined;
   if (altK !== undefined) {
-    const [, , info, go] = s.br![altK];
+    const [, , info, next] = s.br![altK];
     const body = t(info!);
-    $("desc").innerHTML = annotate(body.startsWith("<p>") ? body : `<p>${body}</p>`, used);
-    altBox.innerHTML =
-      `<span>${ui("altNote").replace("{x}", `<code>${esc(t(s.br![altK][0]))}</code>`).replace("{y}", `<code>${esc(t(s.br![s.brPick!][0]))}</code>`)}</span>` +
-      `<button type="button" class="alt-btn" data-alt-back>${ui("altBack")}</button>` +
-      (go ? `<button type="button" class="alt-btn" data-go-mode="${go.mode}" data-fn="${esc(go.fn)}">${ui("brOpen")}</button>` : "");
+    const ends = next === "end" || next === "out";
+    if (ends) cutAt = i;
+    const tail = `<p class="path-next ${ends ? "stop" : ""}">${ui(next === "end" ? "pathEnd" : next === "out" ? "pathOut" : "pathSame")}</p>`;
+    $("desc").innerHTML = annotate(body.startsWith("<p>") ? body : `<p>${body}</p>`, used) + tail;
   } else {
     $("desc").innerHTML = annotate(t(s.d), used);
   }
@@ -165,12 +165,9 @@ function render() {
   br.hidden = !s.br;
   br.innerHTML = s.br
     ? `<div class="br-h">${ui("brHead")} <span>${ui("brHint")}</span></div><div class="br-list">` +
-      s.br.map(([a, b, info], k) => {
-        // "ours" = the path this walkthrough follows; "view" = the outcome whose text is shown now
-        const ours = k === s.brPick;
-        const cls = `${ours ? "ours" : ""} ${altK !== undefined && k === shown ? "view" : ""}`;
-        return `<button type="button" class="br ${cls}" data-b="${k}" aria-pressed="${k === shown}" ${info ? "" : "disabled"}>${ours ? `<i class="br-tag">${ui("brOurs")}</i>` : ""}${t(a)} <span>· ${t(b)}</span></button>`;
-      }).join("") + `</div>`
+      s.br.map(([a, b, info], k) =>
+        `<button type="button" class="br ${k === shown ? "pick" : ""}" data-b="${k}" aria-pressed="${k === shown}" ${info ? "" : "disabled"}>${k === shown ? "✓ " : ""}${t(a)} <span>· ${t(b)}</span></button>`,
+      ).join("") + `</div>`
     : "";
 
   const visited = new Set(steps.map((x) => x.l));
@@ -191,11 +188,12 @@ function render() {
 
   $("counter").textContent = `${i + 1} / ${steps.length}`;
   $<HTMLButtonElement>("prev").disabled = i === 0;
-  $<HTMLButtonElement>("next").disabled = i === steps.length - 1;
+  $<HTMLButtonElement>("next").disabled = i === steps.length - 1 || cutAt !== undefined;
   renderMap();
   document.querySelectorAll<HTMLElement>("#steps button").forEach((el, k) => {
     el.classList.toggle("cur", k === i);
     el.classList.toggle("done", k < i);
+    el.classList.toggle("gone", cutAt !== undefined && k > cutAt);
   });
   writeHash();
 }
@@ -221,11 +219,13 @@ function renderMap() {
   for (const r of [1, 5]) g += `<line class="bnd" x1="0" x2="${W}" y1="${TOP + RH * r}" y2="${TOP + RH * r}"/>`;
 
   const pts = steps.map((s, k) => `${x(k)},${y(s)}`);
-  g += `<polyline class="rest" points="${pts.join(" ")}"/><polyline class="done" points="${pts.slice(0, i + 1).join(" ")}"/>`;
+  // After a branch that ends the path, the remaining steps are shown as not taken
+  const last = cutAt ?? n - 1;
+  g += `<polyline class="untaken" points="${pts.slice(last).join(" ")}"/><polyline class="rest" points="${pts.slice(0, last + 1).join(" ")}"/><polyline class="done" points="${pts.slice(0, i + 1).join(" ")}"/>`;
 
   steps.forEach((s, k) => {
     const cx = x(k), cy = y(s);
-    const cls = k === i ? "cur" : k < i ? "past" : "";
+    const cls = (k === i ? "cur" : k < i ? "past" : "") + (k > last ? " gone" : "");
     const hook = s.hook && HOOKS.find((h) => h.id === s.hook);
     const tip = `${String(k + 1).padStart(2, "0")} · ${esc(fnOf(s))} — ${esc(t(s.t))}`;
     g += `<g class="pt ${cls} ${hook ? "hook" : ""}" data-k="${k}"><title>${tip}</title><rect class="hit" x="${cx - SW / 2}" y="${TOP}" width="${SW}" height="${H - TOP}"/>`;
@@ -333,23 +333,25 @@ tip.addEventListener("mouseleave", hideSoon);
 $("branches").addEventListener("click", (e) => {
   const el = (e.target as HTMLElement).closest<HTMLElement>(".br[data-b]");
   if (!el) return;
-  alt = { key: `${mode}-${proto}-${i}`, k: Number(el.dataset.b) };
-  render();
-});
-$("alt").addEventListener("click", (e) => {
-  const btn = (e.target as HTMLElement).closest<HTMLElement>("button");
-  if (!btn) return;
-  alt = undefined;
-  if (btn.dataset.goMode) {
-    mode = btn.dataset.goMode as Mode;
+  const s = steps[i];
+  const k = Number(el.dataset.b);
+  const next = s.br![k][3];
+  if (next && next !== "end" && next !== "out") {
+    // The packet continues as another scenario: switch to it at this same step
+    mode = next;
     steps = buildSteps(mode, proto);
-    i = Math.max(0, steps.findIndex((x) => x.fn === btn.dataset.fn));
+    i = Math.max(0, steps.findIndex((x) => x.fn === s.fn));
+    alt = undefined;
     reset(true);
-  } else render();
+    return;
+  }
+  alt = k === s.brPick ? undefined : { key: `${mode}-${proto}-${i}`, k };
+  render();
 });
 
 /* ---------- Controls ---------- */
 function go(d: number) {
+  if (d > 0 && cutAt !== undefined) return;
   i = Math.max(0, Math.min(steps.length - 1, i + d));
   render();
 }

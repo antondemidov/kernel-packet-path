@@ -15,8 +15,8 @@ export const UI = {
   },
   eyebrow: { en: "Linux {k} · TCP/IPv4 and UDP/IPv4", uk: "Linux {k} · TCP/IPv4 і UDP/IPv4" },
   lede: {
-    en: "A step-by-step simulation based on A. Stephan, L. Wüstrich, <a href=\"https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2024-04-1/NET-2024-04-1_16.pdf\" target=\"_blank\" rel=\"noopener\">“The Path of a Packet Through the Linux Kernel”</a> (TUM, 2024). The walkthrough follows the usual path of a packet; where the kernel makes a decision, you can click the other possible outcomes to see what happens instead. Step with ← → or click any point on the path map.",
-    uk: "Покрокова симуляція за статтею A. Stephan, L. Wüstrich, <a href=\"https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2024-04-1/NET-2024-04-1_16.pdf\" target=\"_blank\" rel=\"noopener\">«The Path of a Packet Through the Linux Kernel»</a> (TUM, 2024). Симуляція показує звичайний шлях пакета; там, де ядро ухвалює рішення, можна клікнути інші можливі варіанти й прочитати, що сталося б тоді. Гортай кроки стрілками ← → або клікай точки на карті шляху.",
+    en: "A step-by-step simulation based on A. Stephan, L. Wüstrich, <a href=\"https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2024-04-1/NET-2024-04-1_16.pdf\" target=\"_blank\" rel=\"noopener\">“The Path of a Packet Through the Linux Kernel”</a> (TUM, 2024). The walkthrough follows the usual path of a packet; where the kernel makes a decision, you can pick another outcome and see where the packet goes then. Step with ← → or click any point on the path map.",
+    uk: "Покрокова симуляція за статтею A. Stephan, L. Wüstrich, <a href=\"https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2024-04-1/NET-2024-04-1_16.pdf\" target=\"_blank\" rel=\"noopener\">«The Path of a Packet Through the Linux Kernel»</a> (TUM, 2024). Симуляція показує звичайний шлях пакета; там, де ядро ухвалює рішення, можна обрати інший варіант і подивитися, куди тоді піде пакет. Гортай кроки стрілками ← → або клікай точки на карті шляху.",
   },
   sources: {
     en: "Every step is checked against the kernel source: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">Linux {ver} on Elixir</a>; function names link to their definitions. Grey “Correction” boxes mark where the paper simplifies or disagrees with the code; blue “Linux 7.x” boxes show what changed in 7.3. The “Forward” scenario isn’t in the paper and is built from the code.",
@@ -68,15 +68,11 @@ export const UI = {
   skbNewEth: { en: "new Ethernet header pushed in front", uk: "новий Ethernet-заголовок додано спереду" },
   skbPull: { en: "headers stripped by moving data", uk: "заголовки знімаються зсувом data" },
 
-  brOpen: { en: "Open this path →", uk: "Відкрити цей шлях →" },
-  altNote: {
-    en: "Another possible outcome: here the packet goes to {x}. The walkthrough itself continues along the usual path, through {y}.",
-    uk: "Інший можливий варіант: тут пакет потрапляє в {x}. Сама симуляція йде далі звичайним шляхом — через {y}.",
-  },
-  altBack: { en: "← Back to the usual path", uk: "← Назад до звичайного шляху" },
   brHead: { en: "What can happen here", uk: "Що може статися тут" },
-  brHint: { en: "click an outcome to read about it", uk: "натисни варіант, щоб прочитати" },
-  brOurs: { en: "✓ our path", uk: "✓ наш шлях" },
+  brHint: { en: "pick an option to see where the packet goes", uk: "обери варіант, щоб побачити, куди піде пакет" },
+  pathSame: { en: "→ After this, the packet continues along the same steps.", uk: "→ Після цього пакет іде далі тими самими кроками." },
+  pathEnd: { en: "✕ The packet’s path ends here. Pick another option above to continue.", uk: "✕ Тут шлях пакета закінчується. Обери інший варіант вище, щоб іти далі." },
+  pathOut: { en: "↗ From here the packet continues in code this walkthrough doesn’t cover. Pick another option above to continue.", uk: "↗ Далі пакет іде кодом, який ця симуляція не розбирає. Обери інший варіант вище, щоб іти далі." },
   v7none: { en: "No notable changes in Linux 7.x for this step.", uk: "У Linux 7.x цей крок суттєво не змінився." },
   v7mark: { en: "changed in 7.x", uk: "змінено в 7.x" },
 
