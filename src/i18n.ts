@@ -19,8 +19,8 @@ export const UI = {
     uk: "Покрокова симуляція за статтею A. Stephan, L. Wüstrich, <a href=\"https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2024-04-1/NET-2024-04-1_16.pdf\" target=\"_blank\" rel=\"noopener\">«The Path of a Packet Through the Linux Kernel»</a> (TUM, 2024). Симуляція показує звичайний шлях пакета; там, де ядро ухвалює рішення, можна обрати інший варіант і подивитися, куди тоді піде пакет. Гортай кроки стрілками ← → або клікай точки на карті шляху.",
   },
   sources: {
-    en: "Every step is checked against the kernel source: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">Linux {ver} on Elixir</a>; function names link to their definitions. Grey “Correction” boxes mark where the paper simplifies or disagrees with the code; blue “Linux 7.x” boxes show what changed in 7.3. The “Forward” scenario isn’t in the paper and is built from the code.",
-    uk: "Кожен крок звірено з кодом ядра: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">Linux {ver} на Elixir</a>; назви функцій ведуть до їхніх визначень. Сірі блоки «Уточнення» — де стаття спрощує або розходиться з кодом; сині «Linux 7.x» — що змінилося в 7.3. Сценарію «Пересилання» в статті нема, він зібраний за кодом.",
+    en: "Every step is checked against the kernel source: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">Linux {ver} on Elixir</a>; function names link to their definitions. The walkthrough follows Linux 7.3; switch to 5.10, the kernel the paper describes, to see it as it was there. Blue “5.10 → 7.3” boxes show what differs between the two; grey “Correction” boxes mark where the paper simplifies or disagrees with the code. The “Forward” scenario isn’t in the paper and is built from the code.",
+    uk: "Кожен крок звірено з кодом ядра: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">Linux {ver} на Elixir</a>; назви функцій ведуть до їхніх визначень. Симуляція показує Linux 7.3; перемкнися на 5.10, ядро, яке описує стаття, щоб побачити, як було там. Сині блоки «5.10 → 7.3» — чим відрізняються ці ядра; сірі «Уточнення» — де стаття спрощує або розходиться з кодом. Сценарію «Пересилання» в статті нема, він зібраний за кодом.",
   },
   direction: { en: "Direction", uk: "Напрям" },
   protocol: { en: "Protocol", uk: "Протокол" },
@@ -77,8 +77,8 @@ export const UI = {
   cmdHint: { en: "replace eth0, 1.1.1.1 and <PID> with your own; most commands need root", uk: "підстав свої eth0, 1.1.1.1 і <PID>; більшості команд потрібен root" },
   cmdCopy: { en: "Copy", uk: "Копіювати" },
   cmdCopied: { en: "Copied", uk: "Скопійовано" },
-  v7none: { en: "No notable changes in Linux 7.x for this step.", uk: "У Linux 7.x цей крок суттєво не змінився." },
-  v7mark: { en: "changed in 7.x", uk: "змінено в 7.x" },
+  diffNone: { en: "No notable difference between 5.10 and 7.3 in this step.", uk: "Між 5.10 і 7.3 цей крок суттєво не відрізняється." },
+  diffMark: { en: "differs between 5.10 and 7.3", uk: "відрізняється між 5.10 і 7.3" },
 
 } satisfies Record<string, Tx>;
 

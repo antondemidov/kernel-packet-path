@@ -1,7 +1,8 @@
-// Checks that every kernel function and constant named in the step texts exists in the kernel sources:
-// base texts against 5.10, "Linux 7.x" notes against 7.3. Needs kernel checkouts (net/, include/, security/):
+// Checks that every kernel function and constant named in the step texts exists in the kernel sources.
+// Texts describe 7.3; text a step shares between versions (no `k510` override) must hold for 5.10 as well,
+// and the `k510` versions are checked against 5.10. Needs kernel checkouts (net/, include/, security/):
 //   KERNEL_5_10=/path/to/linux-5.10.8 KERNEL_7_3=/path/to/linux-7.3 npx vitest run scripts/kernel-refs.test.ts
-// Without them the test is skipped; CI runs it in .github/workflows/verify-kernel.yml.
+// Without them the test is skipped; CI runs it before every deploy (.github/workflows/deploy.yml).
 
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
@@ -46,28 +47,40 @@ function refs(pick: (s: Step) => string[]) {
   return { f: [...f].sort(), c: [...c].sort() };
 }
 
-const base = refs((s) => [s.fn, plain(s.d), plain(s.note), ...(s.br ?? []).flatMap(([a, , info]) => [plain(a), plain(info)])]);
-const v7 = refs((s) => (s.v7 ? [s.v7.fn ?? "", plain(s.v7.note)] : []));
+// What each kernel's reader sees: fn line, description, notes and branch texts
+const shown = (s: Step, k: "5.10" | "7.3") => [
+  k === "5.10" ? (s.k510?.fn ?? s.fn) : s.fn,
+  plain(k === "5.10" ? (s.k510?.d ?? s.d) : s.d),
+  plain(s.note),
+  ...(s.br ?? []).flatMap(([a, , info]) => [plain(a), plain(info)]),
+];
+const in73 = refs((s) => shown(s, "7.3"));
+const in510 = refs((s) => shown(s, "5.10"));
+const diffs = refs((s) => [plain(s.diff)]);
 
 describe.skipIf(!K510 || !K73)("kernel references", () => {
   const old = K510 ? symbols(K510) : undefined;
   const cur = K73 ? symbols(K73) : undefined;
 
-  it("functions in step texts exist in 5.10", () => {
-    expect(base.f.filter((n) => !old!.calls.has(n) && !PAPER_NAMES.has(n))).toEqual([]);
+  it("functions shown for 7.3 exist in 7.3", () => {
+    expect(in73.f.filter((n) => !cur!.calls.has(n) && !PAPER_NAMES.has(n))).toEqual([]);
+  });
+  it("functions shown for 5.10 exist in 5.10", () => {
+    expect(in510.f.filter((n) => !old!.calls.has(n) && !PAPER_NAMES.has(n))).toEqual([]);
+  });
+  it("constants shown for each kernel exist in it", () => {
+    expect(in73.c.filter((n) => !cur!.words.has(n))).toEqual([]);
+    expect(in510.c.filter((n) => !old!.words.has(n))).toEqual([]);
+  });
+  it("names in 5.10 → 7.3 notes exist in one of the two kernels", () => {
+    expect(diffs.f.filter((n) => !cur!.calls.has(n) && !old!.calls.has(n))).toEqual([]);
+    expect(diffs.c.filter((n) => !cur!.words.has(n) && !old!.words.has(n))).toEqual([]);
   });
   it("the paper's wrong names appear only in Correction notes", () => {
     for (const s of all) {
-      const outside = [s.fn, plain(s.d), ...(s.br ?? []).map(([, , info]) => plain(info))].flatMap(funcs);
+      const outside = [s.fn, plain(s.d), plain(s.k510?.d), ...(s.br ?? []).map(([, , info]) => plain(info))].flatMap(funcs);
       expect(outside.filter((n) => PAPER_NAMES.has(n)), s.fn).toEqual([]);
       if (s.note && funcs(plain(s.note)).some((n) => PAPER_NAMES.has(n))) expect(plain(s.note), s.fn).toMatch(/^<b>Correction\.<\/b>/);
     }
-  });
-  it("constants in step texts exist in 5.10", () => {
-    expect(base.c.filter((n) => !old!.words.has(n))).toEqual([]);
-  });
-  it("names in Linux 7.x notes exist in 7.3 (or in 5.10 when the note says they were removed)", () => {
-    expect(v7.f.filter((n) => !cur!.calls.has(n) && !old!.calls.has(n))).toEqual([]);
-    expect(v7.c.filter((n) => !cur!.words.has(n))).toEqual([]);
   });
 });

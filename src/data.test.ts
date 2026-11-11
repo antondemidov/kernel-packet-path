@@ -19,7 +19,8 @@ function stepHtml(s: Step): string[] {
   return [
     ...texts(s.d),
     ...texts(s.note),
-    ...texts(s.v7?.note),
+    ...texts(s.k510?.d),
+    ...texts(s.diff),
     ...(s.br ?? []).flatMap(([a, b, info]) => [...texts(a), ...texts(b), ...texts(info)]),
   ];
 }
@@ -48,7 +49,7 @@ describe("scenarios", () => {
   it("all texts exist in both languages and are not empty", () => {
     for (const { m, p, steps } of scenarios)
       steps.forEach((s, i) => {
-        for (const x of [s.t, s.d, s.note, s.v7?.note])
+        for (const x of [s.t, s.d, s.note, s.diff, s.k510?.d])
           if (x !== undefined && typeof x !== "string")
             for (const l of LANGS) expect(x[l].trim(), `${label(m, p, i, s)} [${l}]`).not.toBe("");
       });

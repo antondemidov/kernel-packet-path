@@ -17,7 +17,7 @@ const store = {
 };
 
 let lang: Lang = store.get("lang") === "uk" ? "uk" : "en";
-let kernel: Kernel = "5.10";
+let kernel: Kernel = "7.3";
 let mode: Mode = "egress";
 let proto: Proto = "tcp";
 let steps: Step[] = buildSteps(mode, proto);
@@ -33,22 +33,24 @@ const pkt = $("pkt");
 const l4 = () => (proto === "tcp" ? "TCP" : "UDP");
 const t = (x: Txt) => tr(x, lang);
 const ui = (k: UIKey) => UI[k][lang];
-const v7 = () => kernel === "7.3";
+// 7.3 is the default; 5.10 shows its own text where a step has one
+const k5 = () => kernel === "5.10";
+const dOf = (s: Step) => (k5() && s.k510?.d) || s.d;
 const rank = (s: Step) => LAYER_ORDER.indexOf(s.l);
 
-/* ---------- URL: #egress-tcp, #forward-udp-7, #ingress-tcp-5-v7 … to share a scenario, step and kernel ---------- */
+/* ---------- URL: #egress-tcp, #forward-udp-7, #ingress-tcp-5-v5 … to share a scenario, step and kernel (-v5 = Linux 5.10) ---------- */
 function readHash() {
-  const m = location.hash.match(/^#(egress|ingress|forward)-(tcp|udp)(?:-(\d+))?(-v7)?$/);
+  const m = location.hash.match(/^#(egress|ingress|forward)-(tcp|udp)(?:-(\d+))?(-v5|-v7)?$/);
   if (!m) return false;
   mode = m[1] as Mode;
   proto = m[2] as Proto;
-  kernel = m[4] ? "7.3" : "5.10";
+  kernel = m[4] === "-v5" ? "5.10" : "7.3"; // "-v7" is accepted for old links
   steps = buildSteps(mode, proto);
   i = m[3] ? Math.min(steps.length - 1, Math.max(0, +m[3] - 1)) : 0;
   return true;
 }
 function writeHash() {
-  const h = `#${mode}-${proto}-${i + 1}${v7() ? "-v7" : ""}`;
+  const h = `#${mode}-${proto}-${i + 1}${k5() ? "-v5" : ""}`;
   if (location.hash !== h) history.replaceState(null, "", h);
 }
 
@@ -148,7 +150,7 @@ function render() {
     const tail = `<p class="path-next ${ends ? "stop" : ""}">${ui(next === "end" ? "pathEnd" : next === "out" ? "pathOut" : "pathSame")}</p>`;
     $("desc").innerHTML = annotate(body.startsWith("<p>") ? body : `<p>${body}</p>`, used) + tail;
   } else {
-    $("desc").innerHTML = annotate(t(s.d), used);
+    $("desc").innerHTML = annotate(t(dOf(s)), used);
   }
 
   const cmds = $("cmds");
@@ -164,9 +166,9 @@ function render() {
   note.innerHTML = s.note ? annotate(t(s.note), used) : "";
 
   const chg = $("v7");
-  chg.hidden = !v7();
-  chg.classList.toggle("none", !s.v7);
-  chg.innerHTML = s.v7 && v7() ? annotate(t(s.v7.note), used) : ui("v7none");
+  chg.hidden = false;
+  chg.classList.toggle("none", !s.diff);
+  chg.innerHTML = s.diff ? annotate(t(s.diff), used) : ui("diffNone");
   hideTip();
 
   const br = $("branches");
@@ -206,7 +208,7 @@ function render() {
   writeHash();
 }
 
-const fnOf = (s: Step) => (v7() && s.v7?.fn) || s.fn;
+const fnOf = (s: Step) => (k5() && s.k510?.fn) || s.fn;
 
 /* Path map: x = step, y = stack layer. Shows the whole route at once; click a point to jump to it. */
 function renderMap() {
@@ -241,7 +243,7 @@ function renderMap() {
     g += hook
       ? `<path class="mk" d="M${cx} ${cy - 7}L${cx + 7} ${cy}L${cx} ${cy + 7}L${cx - 7} ${cy}Z"/><text class="hl" x="${cx}" y="${cy - 11}">${hook.short}</text>`
       : `<circle class="mk" cx="${cx}" cy="${cy}" r="${k === i ? 7 : 5}"/>`;
-    if (v7() && s.v7) g += `<circle class="v7dot" cx="${cx + 7}" cy="${cy + 7}" r="3"/>`;
+    if (s.diff) g += `<circle class="v7dot" cx="${cx + 7}" cy="${cy + 7}" r="3"/>`;
     g += `</g>`;
   });
 
@@ -259,8 +261,8 @@ function renderList() {
   const list = $("steps");
   list.innerHTML = steps
     .map((s, k) => {
-      const chg = v7() && s.v7;
-      const title = t(s.t) + (chg ? ` · ${ui("v7mark")}` : "");
+      const chg = !!s.diff;
+      const title = t(s.t) + (chg ? ` · ${ui("diffMark")}` : "");
       return `<li><button data-k="${k}" class="${chg ? "chg" : ""}" title="${title}"><span class="f">${fnOf(s).replace(/</g, "&lt;")}</span></button></li>`;
     })
     .join("");

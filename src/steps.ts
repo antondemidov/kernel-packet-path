@@ -1,6 +1,7 @@
 // Scenario data. Each step is one moment on the packet's path.
-// Source: A. Stephan, L. Wüstrich, "The Path of a Packet Through the Linux Kernel", TUM 2024,
-// corrected against Linux 5.10 (elixir.bootlin.com/linux/v5.10.8). `v7` notes are checked against v7.3.
+// Source: A. Stephan, L. Wüstrich, "The Path of a Packet Through the Linux Kernel", TUM 2024.
+// Texts describe Linux 7.3 (the default) and are checked against v7.3; where 5.10.8 differs, `k510` holds the
+// 5.10 version and `diff` explains the difference. Text without a `k510` override must hold for both kernels.
 
 import type { Tx, Txt } from "./i18n";
 
@@ -42,8 +43,10 @@ export interface Step {
   note?: Txt;
   /** Commands to observe this step on a live system: [command, what it shows] */
   cmd?: [string, Tx][];
-  /** What differs in Linux 7.x: optional new function name and an explanation */
-  v7?: { fn?: string; note: Txt };
+  /** Linux 5.10 version of this step where it differs from 7.3: function line and/or description */
+  k510?: { fn?: string; d?: Txt };
+  /** What differs between 5.10 and 7.3 in this step (shown in both modes) */
+  diff?: Txt;
 }
 
 export const LAYER_NAMES: Record<Layer, Txt> = {
@@ -83,8 +86,8 @@ const F_ALL: Field[] = ["transport", "network", "mac"];
 const F_NT: Field[] = ["transport", "network"];
 
 const V7_XTABLES: Txt = {
-  en: "<b>Linux 7.x.</b> The hooks are the same, but the legacy iptables tables (what <code>iptables-legacy</code>, arptables and ebtables use) now need a separate option, <code>NETFILTER_XTABLES_LEGACY</code>, which kernels may leave out. Modern distros use nftables or <code>iptables-nft</code>, which sit on the same hooks; x_tables matches and targets remain available to <code>iptables-nft</code>.",
-  uk: "<b>Linux 7.x.</b> Хуки ті самі, але legacy-таблиці iptables (їх використовують <code>iptables-legacy</code>, arptables і ebtables) тепер потребують окремої опції <code>NETFILTER_XTABLES_LEGACY</code>, яку ядро може не мати. Сучасні дистрибутиви використовують nftables або <code>iptables-nft</code>, що сидять на тих самих хуках; matches і targets x_tables лишаються доступними для <code>iptables-nft</code>.",
+  en: "<b>5.10 → 7.3.</b> The hooks are the same, but the legacy iptables tables (what <code>iptables-legacy</code>, arptables and ebtables use) now need a separate option, <code>NETFILTER_XTABLES_LEGACY</code>, which kernels may leave out. Modern distros use nftables or <code>iptables-nft</code>, which sit on the same hooks; x_tables matches and targets remain available to <code>iptables-nft</code>.",
+  uk: "<b>5.10 → 7.3.</b> Хуки ті самі, але legacy-таблиці iptables (їх використовують <code>iptables-legacy</code>, arptables і ebtables) тепер потребують окремої опції <code>NETFILTER_XTABLES_LEGACY</code>, яку ядро може не мати. Сучасні дистрибутиви використовують nftables або <code>iptables-nft</code>, що сидять на тих самих хуках; matches і targets x_tables лишаються доступними для <code>iptables-nft</code>.",
 };
 
 /* ---------------- EGRESS ---------------- */
@@ -117,15 +120,17 @@ const E_TCP: Step[] = [
     l: "transport", fn: "tcp_sendmsg()", hdr: ["PAY"], data: "PAY", q: "wq",
     t: { en: "TCP slices data into segments", uk: "TCP нарізає дані на сегменти" },
     d: {
+      en: "<p>First it waits for the connection to be established (three-way handshake). Then it puts the data into <code>sk_buff</code>s on the <b>socket write queue</b>. One <code>sk_buff</code> usually holds several MSS-sized segments: it grows up to a “size goal”, a multiple of the MSS (with TSO/GSO up to about 64 KB), and is cut into segments later.</p><p>Data is appended to the last buffer on the queue (<code>tcp_write_queue_tail()</code>) while it is below the size goal, copied from user space into page fragments with <code>skb_copy_to_page_nocache()</code>. Only when the last buffer is full is a new <code>sk_buff</code> allocated (<code>tcp_stream_alloc_skb()</code>). <code>sendfile()</code> and splice don’t copy the data at all: they attach the pages themselves (<code>MSG_SPLICE_PAGES</code>).</p>",
+      uk: "<p>Спочатку чекає, поки з’єднання встановиться (тристоронній handshake). Потім кладе дані в <code>sk_buff</code> у <b>socket write queue</b>. Один <code>sk_buff</code> зазвичай містить кілька сегментів розміру MSS: він росте до «цільового розміру», кратного MSS (з TSO/GSO — до приблизно 64 КБ), і ріжеться на сегменти пізніше.</p><p>Дані дописуються в останній буфер черги (<code>tcp_write_queue_tail()</code>), поки він не досяг цільового розміру: копіюються з user space у сторінкові фрагменти через <code>skb_copy_to_page_nocache()</code>. Лише коли останній буфер заповнений, виділяється новий <code>sk_buff</code> (<code>tcp_stream_alloc_skb()</code>). <code>sendfile()</code> і splice взагалі не копіюють дані: вони прикріплюють самі сторінки (<code>MSG_SPLICE_PAGES</code>).</p>",
+    },
+    k510: { d: {
       en: "<p>First it waits for the connection to be established (three-way handshake). Then it allocates <code>sk_buff</code>s for segments and puts them on the <b>socket write queue</b>. One <code>sk_buff</code> usually holds several MSS-sized segments: it grows up to a “size goal”, a multiple of the MSS (with TSO/GSO up to about 64 KB), and is cut into segments later.</p><p>Data is appended to the last buffer on the queue (<code>tcp_write_queue_tail()</code>) while it is below the size goal: into the linear area with <code>skb_add_data_nocache()</code> if there is room, otherwise into page fragments with <code>skb_copy_to_page_nocache()</code>. Only when the last buffer is full is a new <code>sk_buff</code> allocated (<code>sk_stream_alloc_skb()</code>).</p>",
       uk: "<p>Спочатку чекає, поки з’єднання встановиться (тристоронній handshake). Потім виділяє <code>sk_buff</code> під сегменти й ставить їх у <b>socket write queue</b>. Один <code>sk_buff</code> зазвичай містить кілька сегментів розміру MSS: він росте до «цільового розміру», кратного MSS (з TSO/GSO — до приблизно 64 КБ), і ріжеться на сегменти пізніше.</p><p>Дані дописуються в останній буфер черги (<code>tcp_write_queue_tail()</code>), поки він не досяг цільового розміру: у лінійну частину через <code>skb_add_data_nocache()</code>, якщо там є місце, інакше в сторінкові фрагменти через <code>skb_copy_to_page_nocache()</code>. Лише коли останній буфер заповнений, виділяється новий <code>sk_buff</code> (<code>sk_stream_alloc_skb()</code>).</p>",
-    },
-    v7: {
-      note: {
-        en: "<b>Linux 7.x.</b> <code>tcp_sendmsg_locked()</code> no longer copies into the skb’s linear area with <code>skb_add_data_nocache()</code>: payload always goes into page fragments (<code>skb_copy_to_page_nocache()</code>), and new skbs come from <code>tcp_stream_alloc_skb()</code>. The old <code>sendpage()</code> interface is gone; <code>sendfile()</code> and splice pass pages through <code>MSG_SPLICE_PAGES</code>.",
-        uk: "<b>Linux 7.x.</b> <code>tcp_sendmsg_locked()</code> більше не копіює в лінійну частину skb через <code>skb_add_data_nocache()</code>: дані завжди йдуть у сторінкові фрагменти (<code>skb_copy_to_page_nocache()</code>), а нові skb створює <code>tcp_stream_alloc_skb()</code>. Старого інтерфейсу <code>sendpage()</code> нема; <code>sendfile()</code> і splice передають сторінки через <code>MSG_SPLICE_PAGES</code>.",
+    } },
+    diff: {
+        en: "<b>5.10 → 7.3.</b> <code>tcp_sendmsg_locked()</code> no longer copies into the skb’s linear area with <code>skb_add_data_nocache()</code>: payload always goes into page fragments (<code>skb_copy_to_page_nocache()</code>), and new skbs come from <code>tcp_stream_alloc_skb()</code>. The old <code>sendpage()</code> interface is gone; <code>sendfile()</code> and splice pass pages through <code>MSG_SPLICE_PAGES</code>.",
+        uk: "<b>5.10 → 7.3.</b> <code>tcp_sendmsg_locked()</code> більше не копіює в лінійну частину skb через <code>skb_add_data_nocache()</code>: дані завжди йдуть у сторінкові фрагменти (<code>skb_copy_to_page_nocache()</code>), а нові skb створює <code>tcp_stream_alloc_skb()</code>. Старого інтерфейсу <code>sendpage()</code> нема; <code>sendfile()</code> і splice передають сторінки через <code>MSG_SPLICE_PAGES</code>.",
       },
-    },
   },
   {
     l: "transport", fn: "tcp_write_xmit()", hdr: ["PAY"], data: "PAY", q: "wq",
@@ -143,8 +148,8 @@ const E_TCP: Step[] = [
       uk: "<p>Сегмент на початку write queue клонується, і перед даними клона додається TCP-заголовок: порти, sequence/ack, прапори, вікно. Поле <code>transport_header</code> вказує на його початок.</p><p>Далі пакет іде на мережевий рівень через функцію сокета <code>queue_xmit</code>, тобто <code>ip_queue_xmit()</code>.</p>",
     },
     note: {
-      en: "<b>Correction.</b> The paper builds the TCP header in <code>tcp_sendmsg()</code>. In 5.10 the header is built by <code>__tcp_transmit_skb()</code>, and the skb is cloned first: the original is kept on the retransmit queue until it is ACKed. A clone is a second <code>sk_buff</code> that points to the same data, so the payload isn’t copied (unless an earlier clone is still in flight; then <code>pskb_copy()</code> copies the linear part): one copy goes down to the card, the other waits in case it has to be resent.",
-      uk: "<b>Уточнення.</b> Стаття описує побудову TCP-заголовка в <code>tcp_sendmsg()</code>. У коді 5.10 заголовок формує <code>__tcp_transmit_skb()</code>, і перед цим skb клонується: оригінал лишається в черзі ретрансмісії, доки не прийде ACK. Клон — це другий <code>sk_buff</code>, що вказує на ті самі дані, тож самі дані не копіюються (хіба що попередній клон ще «в дорозі»; тоді <code>pskb_copy()</code> копіює лінійну частину): одна копія йде до карти, друга чекає на випадок повторної відправки.",
+      en: "<b>Correction.</b> The paper builds the TCP header in <code>tcp_sendmsg()</code>. In the code the header is built by <code>__tcp_transmit_skb()</code>, and the skb is cloned first: the original is kept on the retransmit queue until it is ACKed. A clone is a second <code>sk_buff</code> that points to the same data, so the payload isn’t copied (unless an earlier clone is still in flight; then <code>pskb_copy()</code> copies the linear part): one copy goes down to the card, the other waits in case it has to be resent.",
+      uk: "<b>Уточнення.</b> Стаття описує побудову TCP-заголовка в <code>tcp_sendmsg()</code>. У коді заголовок формує <code>__tcp_transmit_skb()</code>, і перед цим skb клонується: оригінал лишається в черзі ретрансмісії, доки не прийде ACK. Клон — це другий <code>sk_buff</code>, що вказує на ті самі дані, тож самі дані не копіюються (хіба що попередній клон ще «в дорозі»; тоді <code>pskb_copy()</code> копіює лінійну частину): одна копія йде до карти, друга чекає на випадок повторної відправки.",
     },
   },
   {
@@ -216,15 +221,17 @@ const OUT_LINK: Step[] = [
     l: "link", fn: "dev_queue_xmit()", hdr: ALL, data: "ETH", f: F_ALL, q: "qdisc",
     t: { en: "tc egress and the qdisc", uk: "tc egress і черга qdisc" },
     d: {
+      en: "<p><code>mac_header</code> is set. If the device has nftables <code>egress</code> chains, the netfilter egress hook runs first; then <code>tc egress</code>, where classifiers and BPF programs (attached via tcx links or clsact) can drop, change or redirect the packet. Then it is enqueued into the <b>qdisc</b>: <code>fq_codel</code>, <code>fq</code>, <code>pfifo_fast</code> and so on. This is where shaping, priorities and AQM happen.</p><p>Devices with <code>noqueue</code> (typically virtual ones such as loopback or veth) have no qdisc: the packet goes straight to the driver via <code>dev_hard_start_xmit()</code>.</p>",
+      uk: "<p>Виставляється <code>mac_header</code>. Якщо на пристрої є ланцюжки nftables <code>egress</code>, спершу працює netfilter-хук egress; потім <code>tc egress</code>, де класифікатори й BPF-програми (через tcx links або clsact) можуть відкинути, змінити чи перенаправити пакет. Далі пакет стає в чергу <b>qdisc</b>: <code>fq_codel</code>, <code>fq</code>, <code>pfifo_fast</code> тощо. Саме тут працюють шейпінг, пріоритети й AQM.</p><p>У пристроїв з <code>noqueue</code> (зазвичай віртуальних, як-от loopback чи veth) qdisc нема: пакет одразу йде в драйвер через <code>dev_hard_start_xmit()</code>.</p>",
+    },
+    k510: { d: {
       en: "<p><code>mac_header</code> is set. The packet passes <code>tc egress</code> (classifiers, tc BPF programs) and is enqueued into the <b>qdisc</b>: <code>fq_codel</code>, <code>fq</code>, <code>pfifo_fast</code> and so on. This is where shaping, priorities and AQM happen.</p><p>Devices with <code>noqueue</code> (typically virtual ones such as loopback or veth) have no qdisc: the packet goes straight to the driver via <code>dev_hard_start_xmit()</code>.</p>",
       uk: "<p>Виставляється <code>mac_header</code>. Пакет проходить <code>tc egress</code> (класифікатори, BPF-програми tc) і стає в чергу дисципліни <b>qdisc</b>: <code>fq_codel</code>, <code>fq</code>, <code>pfifo_fast</code> тощо. Саме тут працюють шейпінг, пріоритети й AQM.</p><p>У пристроїв з <code>noqueue</code> (зазвичай віртуальних, як-от loopback чи veth) qdisc нема: пакет одразу йде в драйвер через <code>dev_hard_start_xmit()</code>.</p>",
-    },
-    v7: {
-      note: {
-        en: "<b>Linux 7.x.</b> Before the qdisc there are two hook points: the netfilter <b>egress</b> hook (<code>nf_hook_egress()</code>, an nftables <code>egress</code> chain), then tc egress. tc BPF programs can now attach through <b>tcx</b> (<code>tcx_run()</code>): multi-program BPF links instead of only clsact filters.",
-        uk: "<b>Linux 7.x.</b> Перед qdisc дві точки: netfilter-хук <b>egress</b> (<code>nf_hook_egress()</code>, ланцюжок nftables <code>egress</code>), потім tc egress. BPF-програми tc тепер можна чіпляти через <b>tcx</b> (<code>tcx_run()</code>): кілька програм через BPF links замість лише фільтрів clsact.",
+    } },
+    diff: {
+        en: "<b>5.10 → 7.3.</b> Before the qdisc there are two hook points: the netfilter <b>egress</b> hook (<code>nf_hook_egress()</code>, an nftables <code>egress</code> chain), then tc egress. tc BPF programs can now attach through <b>tcx</b> (<code>tcx_run()</code>): multi-program BPF links instead of only clsact filters.",
+        uk: "<b>5.10 → 7.3.</b> Перед qdisc дві точки: netfilter-хук <b>egress</b> (<code>nf_hook_egress()</code>, ланцюжок nftables <code>egress</code>), потім tc egress. BPF-програми tc тепер можна чіпляти через <b>tcx</b> (<code>tcx_run()</code>): кілька програм через BPF links замість лише фільтрів clsact.",
       },
-    },
   },
   {
     l: "link", fn: "__qdisc_run() → ndo_start_xmit", hdr: ALL, data: "ETH", f: F_ALL, q: "txring",
@@ -287,7 +294,7 @@ const E_TAIL: Step[] = [
       en: "<p>If the socket has IP options set (rare), <code>ip_options_build()</code> has already written them into the header. Then the packet passes the netfilter hook <code>NF_INET_LOCAL_OUT</code>: rules of the <b>OUTPUT</b> chain run here (filter, nat, mangle, conntrack).</p><p>After the hook, <code>dst_output()</code> calls the route’s output handler through a function pointer. For plain unicast that is <code>ip_output()</code>.</p>",
       uk: "<p>Якщо в сокета задані IP-опції (рідко), <code>ip_options_build()</code> уже записала їх у заголовок. Потім пакет проходить хук netfilter <code>NF_INET_LOCAL_OUT</code>: тут спрацьовують правила ланцюжка <b>OUTPUT</b> (filter, nat, mangle, conntrack).</p><p>Після хука <code>dst_output()</code> через вказівник на функцію викликає вихідний обробник маршруту. Для звичайного unicast це <code>ip_output()</code>.</p>",
     },
-    v7: { note: V7_XTABLES },
+    diff: V7_XTABLES,
   },
   {
     l: "ip", fn: "ip_output()", hdr: L3, data: "IP", f: F_NT, hook: "POST_ROUTING",
@@ -342,15 +349,13 @@ const IN_LOWER: Step[] = [
       uk: "<p>Ядро виділяє <code>sk_buff</code> і заповнює метадані: інтерфейс, протокол (з поля EtherType: IP), тип пакета (для нас, broadcast, multicast, чужий).</p><p><code>mac_header</code> ставиться на початок кадру, після чого Ethernet-заголовок «знімається»: <code>data</code> просто зсувається на IP-заголовок. Байти ніхто не копіює й не стирає.</p>",
     },
     note: {
-      en: "<b>Correction.</b> In 5.10 the IRQ handler only schedules NAPI. Packets are pulled in batches by the NET_RX softirq (<code>net_rx_action</code> → <code>napi_poll</code> → the driver’s <code>poll()</code> → <code>napi_gro_receive</code>), which is why <code>ksoftirqd</code> shows up under load, with counters in <code>/proc/net/softnet_stat</code>. A native (driver-mode) XDP program runs before the <code>sk_buff</code> is even allocated; generic XDP runs later, in <code>__netif_receive_skb_core()</code>.",
-      uk: "<b>Уточнення.</b> У 5.10 обробник IRQ лише планує NAPI. Пакети пачками забирає softirq NET_RX (<code>net_rx_action</code> → <code>napi_poll</code> → <code>poll()</code> драйвера → <code>napi_gro_receive</code>), тому під навантаженням видно <code>ksoftirqd</code>, а лічильники — у <code>/proc/net/softnet_stat</code>. XDP-програма в нативному режимі (у драйвері) виконується ще до виділення <code>sk_buff</code>; generic XDP — пізніше, у <code>__netif_receive_skb_core()</code>.",
+      en: "<b>Correction.</b> The IRQ handler only schedules NAPI. Packets are pulled in batches by the NET_RX softirq (<code>net_rx_action</code> → <code>napi_poll</code> → the driver’s <code>poll()</code> → <code>napi_gro_receive</code>), which is why <code>ksoftirqd</code> shows up under load, with counters in <code>/proc/net/softnet_stat</code>. A native (driver-mode) XDP program runs before the <code>sk_buff</code> is even allocated; generic XDP runs later, in <code>__netif_receive_skb_core()</code>.",
+      uk: "<b>Уточнення.</b> Обробник IRQ лише планує NAPI. Пакети пачками забирає softirq NET_RX (<code>net_rx_action</code> → <code>napi_poll</code> → <code>poll()</code> драйвера → <code>napi_gro_receive</code>), тому під навантаженням видно <code>ksoftirqd</code>, а лічильники — у <code>/proc/net/softnet_stat</code>. XDP-програма в нативному режимі (у драйвері) виконується ще до виділення <code>sk_buff</code>; generic XDP — пізніше, у <code>__netif_receive_skb_core()</code>.",
     },
-    v7: {
-      note: {
-        en: "<b>Linux 7.x.</b> GRO lives in its own file, <code>net/core/gro.c</code>; <code>napi_gro_receive()</code> is now an inline wrapper around <code>gro_receive_skb()</code>. NAPI can also run in <b>threaded</b> mode: polling happens in <code>napi/&lt;dev&gt;-&lt;id&gt;</code> kernel threads instead of softirq, toggled via <code>/sys/class/net/&lt;dev&gt;/threaded</code>.",
-        uk: "<b>Linux 7.x.</b> GRO винесено в окремий файл <code>net/core/gro.c</code>; <code>napi_gro_receive()</code> тепер inline-обгортка над <code>gro_receive_skb()</code>. NAPI також може працювати в режимі <b>threaded</b>: опитування йде в потоках ядра <code>napi/&lt;dev&gt;-&lt;id&gt;</code> замість softirq, вмикається через <code>/sys/class/net/&lt;dev&gt;/threaded</code>.",
+    diff: {
+        en: "<b>5.10 → 7.3.</b> GRO lives in its own file, <code>net/core/gro.c</code>; <code>napi_gro_receive()</code> is now an inline wrapper around <code>gro_receive_skb()</code>. NAPI can also run in <b>threaded</b> mode: polling happens in <code>napi/&lt;dev&gt;-&lt;id&gt;</code> kernel threads instead of softirq, toggled via <code>/sys/class/net/&lt;dev&gt;/threaded</code>.",
+        uk: "<b>5.10 → 7.3.</b> GRO винесено в окремий файл <code>net/core/gro.c</code>; <code>napi_gro_receive()</code> тепер inline-обгортка над <code>gro_receive_skb()</code>. NAPI також може працювати в режимі <b>threaded</b>: опитування йде в потоках ядра <code>napi/&lt;dev&gt;-&lt;id&gt;</code> замість softirq, вмикається через <code>/sys/class/net/&lt;dev&gt;/threaded</code>.",
       },
-    },
   },
   {
     l: "link", fn: "netif_receive_skb()", data: "IP", f: ["mac", "network"],
@@ -376,12 +381,10 @@ const IN_LOWER: Step[] = [
       en: "<b>Correction.</b> The paper treats TAP as a virtual interface for VMs. In the code it is the <code>ptype_all</code> list: anything that opened an <code>AF_PACKET</code> socket. That is where tcpdump and Wireshark see the packet, before netfilter.",
       uk: "<b>Уточнення.</b> Стаття трактує TAP як віртуальний інтерфейс для ВМ. У коді це список <code>ptype_all</code>: усе, що відкрило <code>AF_PACKET</code>-сокет, тобто tcpdump і Wireshark бачать пакет саме тут, до netfilter.",
     },
-    v7: {
-      note: {
-        en: "<b>Linux 7.x.</b> The order in <code>__netif_receive_skb_core()</code> is the same. New: tc ingress BPF programs can attach through <b>tcx</b> links (<code>tcx_run()</code>), several programs per device.",
-        uk: "<b>Linux 7.x.</b> Порядок у <code>__netif_receive_skb_core()</code> той самий. Нове: BPF-програми tc ingress можна чіпляти через <b>tcx</b> links (<code>tcx_run()</code>), кілька програм на пристрій.",
+    diff: {
+        en: "<b>5.10 → 7.3.</b> The order in <code>__netif_receive_skb_core()</code> is the same. New: tc ingress BPF programs can attach through <b>tcx</b> links (<code>tcx_run()</code>), several programs per device.",
+        uk: "<b>5.10 → 7.3.</b> Порядок у <code>__netif_receive_skb_core()</code> той самий. Нове: BPF-програми tc ingress можна чіпляти через <b>tcx</b> links (<code>tcx_run()</code>), кілька програм на пристрій.",
       },
-    },
   },
   {
     l: "ip", fn: "ip_rcv()", data: "IP", f: F_ALL, hook: "PRE_ROUTING",
@@ -390,12 +393,10 @@ const IN_LOWER: Step[] = [
       en: "<p>Packets for another MAC (<code>PACKET_OTHERHOST</code>) are dropped. Version, length and the IP header checksum are checked. <code>transport_header</code> is set.</p><p>Then the <code>NF_INET_PRE_ROUTING</code> hook: the <b>PREROUTING</b> chain, conntrack, DNAT. The hook receives a pointer to <code>ip_rcv_finish()</code> and calls it if the packet is accepted.</p>",
       uk: "<p>Пакети для чужого MAC (<code>PACKET_OTHERHOST</code>) відкидаються. Перевіряються версія, довжина і контрольна сума IP-заголовка. Виставляється <code>transport_header</code>.</p><p>Далі хук <code>NF_INET_PRE_ROUTING</code>: ланцюжок <b>PREROUTING</b>, conntrack, DNAT. Хук отримує вказівник на <code>ip_rcv_finish()</code> і викликає його, якщо пакет пропущено.</p>",
     },
-    v7: {
-      note: {
-        en: "<b>Linux 7.x.</b> Every drop now records a reason: <code>kfree_skb_reason()</code> / <code>sk_skb_reason_drop()</code> with codes such as <code>IP_CSUM</code>, <code>NETFILTER_DROP</code>, <code>NO_SOCKET</code> (over 120 in total). You can see them with <code>perf trace -e skb:kfree_skb</code>, <code>dropwatch</code> or <code>pwru</code>, instead of guessing.",
-        uk: "<b>Linux 7.x.</b> Кожен дроп тепер має причину: <code>kfree_skb_reason()</code> / <code>sk_skb_reason_drop()</code> з кодами на зразок <code>IP_CSUM</code>, <code>NETFILTER_DROP</code>, <code>NO_SOCKET</code> (понад 120). Їх видно через <code>perf trace -e skb:kfree_skb</code>, <code>dropwatch</code> або <code>pwru</code>, замість гадати.",
+    diff: {
+        en: "<b>5.10 → 7.3.</b> Every drop now records a reason: <code>kfree_skb_reason()</code> / <code>sk_skb_reason_drop()</code> with codes such as <code>IP_CSUM</code>, <code>NETFILTER_DROP</code>, <code>NO_SOCKET</code> (over 120 in total). You can see them with <code>perf trace -e skb:kfree_skb</code>, <code>dropwatch</code> or <code>pwru</code>, instead of guessing.",
+        uk: "<b>5.10 → 7.3.</b> Кожен дроп тепер має причину: <code>kfree_skb_reason()</code> / <code>sk_skb_reason_drop()</code> з кодами на зразок <code>IP_CSUM</code>, <code>NETFILTER_DROP</code>, <code>NO_SOCKET</code> (понад 120). Їх видно через <code>perf trace -e skb:kfree_skb</code>, <code>dropwatch</code> або <code>pwru</code>, замість гадати.",
       },
-    },
   },
 ];
 
@@ -459,12 +460,10 @@ const I_TCP: Step[] = [
       en: "<b>Correction.</b> The paper calls this function <code>tcp_ipv4_recv()</code>; the correct name is <code>tcp_v4_rcv()</code>. Also, <code>tcp_filter()</code> applies the BPF socket filter, which can drop any segment, not only a new connection.",
       uk: "<b>Уточнення.</b> У статті функція названа <code>tcp_ipv4_recv()</code>; правильна назва — <code>tcp_v4_rcv()</code>. А <code>tcp_filter()</code> застосовує BPF socket filter, який може відкинути сегмент, а не лише нове з’єднання.",
     },
-    v7: {
-      note: {
-        en: "<b>Linux 7.x.</b> Same structure. <code>tcp_filter()</code> moved to <code>include/net/tcp.h</code> and returns a drop reason, so a dropped segment tells you why, e.g. <code>TCP_CSUM</code> or <code>SOCKET_FILTER</code>.",
-        uk: "<b>Linux 7.x.</b> Структура та сама. <code>tcp_filter()</code> переїхала в <code>include/net/tcp.h</code> і повертає причину дропу, тож відкинутий сегмент «каже», чому: наприклад, <code>TCP_CSUM</code> чи <code>SOCKET_FILTER</code>.",
+    diff: {
+        en: "<b>5.10 → 7.3.</b> Same structure. <code>tcp_filter()</code> moved to <code>include/net/tcp.h</code> and returns a drop reason, so a dropped segment tells you why, e.g. <code>TCP_CSUM</code> or <code>SOCKET_FILTER</code>.",
+        uk: "<b>5.10 → 7.3.</b> Структура та сама. <code>tcp_filter()</code> переїхала в <code>include/net/tcp.h</code> і повертає причину дропу, тож відкинутий сегмент «каже», чому: наприклад, <code>TCP_CSUM</code> чи <code>SOCKET_FILTER</code>.",
       },
-    },
   },
   {
     l: "transport", fn: "tcp_v4_do_rcv() → tcp_rcv_established()", data: "PAY", f: F_ALL, q: "rq",
@@ -485,7 +484,7 @@ const I_TCP: Step[] = [
 
 const I_UDP: Step[] = [
   {
-    l: "transport", fn: "udp_rcv() → __udp4_lib_rcv()", data: "L4", f: F_ALL, q: "rq",
+    l: "transport", fn: "udp_rcv()", k510: { fn: "udp_rcv() → __udp4_lib_rcv()" }, data: "L4", f: F_ALL, q: "rq",
     t: { en: "Socket lookup by port", uk: "Пошук сокета за портом" },
     br: [
       [{ en: "socket found", uk: "сокет знайдено" }, "udp_queue_rcv_skb()",
@@ -502,31 +501,25 @@ const I_UDP: Step[] = [
       en: "<b>Correction.</b> The paper describes this stage via <code>udp_rcvmsg()</code>. In fact <code>udp_rcv()</code> runs in softirq, and <code>udp_recvmsg()</code> runs later on the reading side (next step).",
       uk: "<b>Уточнення.</b> Стаття описує цей етап через <code>udp_rcvmsg()</code>. Насправді в softirq працює <code>udp_rcv()</code>, а <code>udp_recvmsg()</code> виконується вже на боці читання (наступний крок).",
     },
-    v7: {
-      fn: "udp_rcv()",
-      note: {
-        en: "<b>Linux 7.x.</b> UDP-Lite support was removed, and <code>__udp4_lib_rcv()</code> was folded into <code>udp_rcv()</code>. The logic is the same; taking a socket already attached to the skb (early demux or BPF <code>bpf_sk_assign()</code>), which 5.10 does with <code>skb_steal_sock()</code>, is now <code>inet_steal_sock()</code>.",
-        uk: "<b>Linux 7.x.</b> Підтримку UDP-Lite прибрали, а <code>__udp4_lib_rcv()</code> влили в <code>udp_rcv()</code>. Логіка та сама; сокет, уже прив’язаний до skb (early demux або BPF <code>bpf_sk_assign()</code>), який 5.10 бере через <code>skb_steal_sock()</code>, тепер береться через <code>inet_steal_sock()</code>.",
+    diff: {
+        en: "<b>5.10 → 7.3.</b> UDP-Lite support was removed, and <code>__udp4_lib_rcv()</code> was folded into <code>udp_rcv()</code>. The logic is the same; taking a socket already attached to the skb (early demux or BPF <code>bpf_sk_assign()</code>), which 5.10 does with <code>skb_steal_sock()</code>, is now <code>inet_steal_sock()</code>.",
+        uk: "<b>5.10 → 7.3.</b> Підтримку UDP-Lite прибрали, а <code>__udp4_lib_rcv()</code> влили в <code>udp_rcv()</code>. Логіка та сама; сокет, уже прив’язаний до skb (early demux або BPF <code>bpf_sk_assign()</code>), який 5.10 бере через <code>skb_steal_sock()</code>, тепер береться через <code>inet_steal_sock()</code>.",
       },
-    },
   },
 ];
 
 const I_SOCK: Record<Proto, Step> = {
   tcp: {
-    l: "socket", fn: "read() → sock_recvmsg() → tcp_recvmsg()", data: "PAY", f: F_ALL, q: "rq",
+    l: "socket", fn: "read() → tcp_recvmsg() → tcp_recvmsg_locked()", k510: { fn: "read() → sock_recvmsg() → tcp_recvmsg()" }, data: "PAY", f: F_ALL, q: "rq",
     t: { en: "The application reads the data", uk: "Застосунок читає дані" },
     d: {
       en: "<p><code>read()</code> goes through <code>sock_read_iter()</code> (<code>recv()</code>/<code>recvfrom()</code> through <code>__sys_recvfrom()</code>), and <code>sock_recvmsg()</code> runs the call through LSM, just like on send. <code>inet_recvmsg()</code> calls <code>tcp_recvmsg()</code>.</p><p>Data is taken off the receive queue and copied into the user-space buffer (e.g. an array on the heap), and the <code>sk_buff</code> is freed.</p>",
       uk: "<p><code>read()</code> іде через <code>sock_read_iter()</code> (<code>recv()</code>/<code>recvfrom()</code> — через <code>__sys_recvfrom()</code>), а <code>sock_recvmsg()</code> пропускає виклик через LSM — як і на відправці. <code>inet_recvmsg()</code> викликає <code>tcp_recvmsg()</code>.</p><p>Дані виймаються з receive queue, копіюються в буфер user space (наприклад, масив у купі), а <code>sk_buff</code> звільняється.</p>",
     },
-    v7: {
-      fn: "read() → tcp_recvmsg() → tcp_recvmsg_locked()",
-      note: {
-        en: "<b>Linux 7.x.</b> The copy loop moved into <code>tcp_recvmsg_locked()</code>; <code>tcp_recvmsg()</code> wraps it with socket locking, busy polling and control messages.",
-        uk: "<b>Linux 7.x.</b> Цикл копіювання переїхав у <code>tcp_recvmsg_locked()</code>; <code>tcp_recvmsg()</code> обгортає його блокуванням сокета, busy polling і керуючими повідомленнями.",
+    diff: {
+        en: "<b>5.10 → 7.3.</b> The copy loop moved into <code>tcp_recvmsg_locked()</code>; <code>tcp_recvmsg()</code> wraps it with socket locking, busy polling and control messages.",
+        uk: "<b>5.10 → 7.3.</b> Цикл копіювання переїхав у <code>tcp_recvmsg_locked()</code>; <code>tcp_recvmsg()</code> обгортає його блокуванням сокета, busy polling і керуючими повідомленнями.",
       },
-    },
   },
   udp: {
     l: "socket", fn: "read() → udp_recvmsg()", data: "PAY", f: F_ALL, q: "rq",
@@ -548,11 +541,11 @@ const I_APP: Step = {
 };
 
 /* ---------------- FORWARD ---------------- */
-// The paper only mentions this path (ip_forward). Steps are built from net/ipv4/ip_forward.c in 5.10.
+// The paper only mentions this path (ip_forward). Steps are built from net/ipv4/ip_forward.c in 5.10 and 7.3.
 
 const FWD_NOTE_SCOPE: Txt = {
-  en: "<b>Beyond the paper.</b> The paper only mentions <code>ip_forward()</code>. This scenario is built from <code>net/ipv4/ip_forward.c</code> and <code>ip_output.c</code> in kernel 5.10.",
-  uk: "<b>Поза статтею.</b> Стаття лише згадує <code>ip_forward()</code>. Цей сценарій зібрано за кодом <code>net/ipv4/ip_forward.c</code> і <code>ip_output.c</code> ядра 5.10.",
+  en: "<b>Beyond the paper.</b> The paper only mentions <code>ip_forward()</code>. This scenario is built from <code>net/ipv4/ip_forward.c</code> and <code>ip_output.c</code> in kernels 5.10 and 7.3.",
+  uk: "<b>Поза статтею.</b> Стаття лише згадує <code>ip_forward()</code>. Цей сценарій зібрано за кодом <code>net/ipv4/ip_forward.c</code> і <code>ip_output.c</code> ядер 5.10 і 7.3.",
 };
 
 const F_MID: Step[] = [
@@ -574,12 +567,10 @@ const F_MID: Step[] = [
       uk: "<p>Пакет має бути адресований на MAC цього хоста (<code>PACKET_HOST</code>). Перевіряються політики IPsec (xfrm). Якщо TTL закінчується, відправнику йде ICMP «time exceeded». Якщо пакет не влазить у MTU вихідного інтерфейсу і має прапорець DF, відправнику йде ICMP «fragmentation needed».</p><p>Потім <code>ip_decrease_ttl()</code> зменшує TTL на 1 і інкрементально перераховує контрольну суму IP-заголовка.</p>",
     },
     note: FWD_NOTE_SCOPE,
-    v7: {
-      note: {
-        en: "<b>Linux 7.x.</b> The logic is unchanged. Most drops now record a reason (<code>PKT_TOO_BIG</code>, <code>XFRM_POLICY</code>, <code>IP_INHDR</code>), visible via the <code>skb:kfree_skb</code> tracepoint. <code>IpForwDatagrams</code> is now counted here, before the MTU check and the FORWARD hook, so it also includes packets dropped there; in 5.10 it is counted in <code>ip_forward_finish()</code>.",
-        uk: "<b>Linux 7.x.</b> Логіка та сама. Більшість дропів тепер має причину (<code>PKT_TOO_BIG</code>, <code>XFRM_POLICY</code>, <code>IP_INHDR</code>), її видно через tracepoint <code>skb:kfree_skb</code>. <code>IpForwDatagrams</code> тепер рахується тут, до перевірки MTU й хука FORWARD, тож включає й пакети, відкинуті там; у 5.10 він рахується в <code>ip_forward_finish()</code>.",
+    diff: {
+        en: "<b>5.10 → 7.3.</b> The logic is unchanged. Most drops now record a reason (<code>PKT_TOO_BIG</code>, <code>XFRM_POLICY</code>, <code>IP_INHDR</code>), visible via the <code>skb:kfree_skb</code> tracepoint. <code>IpForwDatagrams</code> is now counted here, before the MTU check and the FORWARD hook, so it also includes packets dropped there; in 5.10 it is counted in <code>ip_forward_finish()</code>.",
+        uk: "<b>5.10 → 7.3.</b> Логіка та сама. Більшість дропів тепер має причину (<code>PKT_TOO_BIG</code>, <code>XFRM_POLICY</code>, <code>IP_INHDR</code>), її видно через tracepoint <code>skb:kfree_skb</code>. <code>IpForwDatagrams</code> тепер рахується тут, до перевірки MTU й хука FORWARD, тож включає й пакети, відкинуті там; у 5.10 він рахується в <code>ip_forward_finish()</code>.",
       },
-    },
   },
   {
     l: "ip", fn: "NF_HOOK(FORWARD) → ip_forward_finish()", data: "IP", f: F_ALL, hook: "FORWARD",
@@ -588,7 +579,7 @@ const F_MID: Step[] = [
       en: "<p>The packet passes the <code>NF_INET_FORWARD</code> hook: the <b>FORWARD</b> chain. Router and firewall rules live here, as do Docker and Kubernetes CNI rules for traffic between pods and to the outside.</p><p>Important: a transit packet never passes INPUT or OUTPUT. A rule in INPUT won’t stop it.</p>",
       uk: "<p>Пакет проходить хук <code>NF_INET_FORWARD</code>: ланцюжок <b>FORWARD</b>. Тут живуть правила роутерів і фаєрволів, а також правила Docker і CNI-плагінів Kubernetes для трафіку між подами й назовні.</p><p>Важливо: INPUT і OUTPUT транзитний пакет не проходить зовсім. Правило в INPUT його не зупинить.</p>",
     },
-    v7: { note: V7_XTABLES },
+    diff: V7_XTABLES,
   },
   {
     l: "ip", fn: "dst_output() → ip_output()", data: "IP", f: F_ALL, hook: "POST_ROUTING",

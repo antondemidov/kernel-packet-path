@@ -3,6 +3,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -11,7 +12,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -24,13 +25,28 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Fetch kernel sources for the accuracy check (net/, include/, security/ only)
+        run: |
+          fetch() {
+            git clone --quiet --depth 1 --filter=blob:none --sparse --branch "$2" "$1" "$3"
+            git -C "$3" sparse-checkout set net include security
+          }
+          fetch https://github.com/gregkh/linux v5.10.8 "$RUNNER_TEMP/linux-5.10" &
+          fetch https://github.com/torvalds/linux v7.3 "$RUNNER_TEMP/linux-7.3" &
+          wait
+      # Data integrity tests plus the check that every kernel name in the texts exists in 5.10.8 / 7.3;
+      # nothing is deployed if either fails
       - run: npm test
+        env:
+          KERNEL_5_10: ${{ runner.temp }}/linux-5.10
+          KERNEL_7_3: ${{ runner.temp }}/linux-7.3
       - run: npm run build
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
   deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:

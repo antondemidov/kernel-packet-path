@@ -13,12 +13,12 @@ Each step shows the kernel function, an explanation, the `sk_buff` state (which 
 Based on A. Stephan, L. Wüstrich, ["The Path of a Packet Through the Linux Kernel"](https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2024-04-1/NET-2024-04-1_16.pdf) (TUM, 2024). Every step is checked against the kernel source ([5.10.8](https://elixir.bootlin.com/linux/v5.10.8/source/net) and [7.3](https://elixir.bootlin.com/linux/v7.3/source/net)):
 
 - grey **Correction** boxes mark where the paper simplifies or disagrees with the code;
-- the **Linux 5.10 / 7.3** toggle shows what changed in modern kernels;
+- the walkthrough follows **Linux 7.3** by default; switch to **5.10**, the kernel the paper describes, and blue boxes show what differs;
 - every function name links to its definition on Elixir for the selected kernel.
 
 The UI is in English, with a Ukrainian toggle.
 
-Link to a specific step: `#egress-tcp-5`, `#ingress-udp-1`, `#forward-tcp-7`; with the 7.x notes: `#ingress-udp-8-v7`.
+Link to a specific step: `#egress-tcp-5`, `#ingress-udp-1`, `#forward-tcp-7`; on Linux 5.10: `#ingress-udp-8-v5`.
 
 ## Run locally
 
