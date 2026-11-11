@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>A Packet’s Path: FAQ</title>
+  <meta name="description" content="Common Linux networking questions (lost packets, iptables order, NAT, routing, containers, multicast) answered with where in the kernel it happens.">
+  <meta property="og:title" content="A Packet’s Path: FAQ">
+  <meta property="og:description" content="Common Linux networking questions answered with where in the kernel it happens.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://packetpath.fyi/faq.html">
+  <meta property="og:image" content="https://packetpath.fyi/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://packetpath.fyi/og.png">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='9' width='24' height='14' rx='3' fill='%23d96f0b'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+</head>
+<body>
+<div class="wrap ex faq">
+  <header>
+    <div class="top">
+      <div class="eyebrow"><a href="./"><span class="en">← The simulation</span><span class="uk">← До симуляції</span></a></div>
+      <div class="seg sm" role="group" aria-label="Language">
+        <button data-lang="en" aria-pressed="true">EN</button>
+        <button data-lang="uk" aria-pressed="false">UA</button>
+      </div>
+    </div>
+    <h1><span class="en">FAQ: common questions, answered by the kernel</span><span class="uk">FAQ: типові питання і що на них каже ядро</span></h1>
+    <p class="lede"><span class="en">Common questions about Linux networking, each with a short answer and the steps of the simulation where it happens. Follow a link to see the packet at that point, with commands to check it on your own machine.</span><span class="uk">Типові питання про мережу в Linux, кожне з короткою відповіддю і кроками симуляції, де це відбувається. Перейди за посиланням, щоб побачити пакет у цьому місці, з командами для перевірки на своїй машині.</span></p>
+  </header>
+
+  <section class="card">
+    <h2 class="section-h"><span class="en">Packets go missing</span><span class="uk">Пакети зникають</span></h2>
+    <div class="qa">
+      <h3><span class="en">tcpdump shows the packet, but the application never gets it</span><span class="uk">tcpdump бачить пакет, а застосунок його так і не отримує</span></h3>
+      <p class="ex-p"><span class="en">tcpdump sees an incoming packet very early, in <code>netif_receive_skb()</code>, before tc, the firewall and routing. Anything after that point can still drop it: a tc or nftables ingress program, the PREROUTING or INPUT chain, a routing decision (the packet is not for this host and forwarding is off), or a missing socket on the port. To find the exact place, run <code>perf trace -e skb:kfree_skb</code>: it prints every freed packet with the function and, on newer kernels, the reason.</span><span class="uk">tcpdump бачить вхідний пакет дуже рано, в <code>netif_receive_skb()</code>, до tc, файрвола і маршрутизації. Усе, що далі, ще може його відкинути: програма tc або nftables ingress, ланцюжок PREROUTING чи INPUT, рішення маршрутизації (пакет не для цього хоста, а пересилання вимкнене) або відсутній сокет на порту. Щоб знайти точне місце, запусти <code>perf trace -e skb:kfree_skb</code>: він друкує кожен звільнений пакет із функцією, а на новіших ядрах і з причиною.</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#ingress-tcp-4"><span class="en">Receive 4</span><span class="uk">Прийом 4</span></a> · <a href="./#ingress-tcp-5"><span class="en">Receive 5</span><span class="uk">Прийом 5</span></a> · <a href="./#ingress-tcp-6"><span class="en">Receive 6</span><span class="uk">Прийом 6</span></a> · <a href="./#ingress-tcp-7"><span class="en">Receive 7</span><span class="uk">Прийом 7</span></a> · <a href="./#ingress-udp-8"><span class="en">Receive UDP 8</span><span class="uk">Прийом UDP 8</span></a></p>
+    </div>
+    <div class="qa">
+      <h3><span class="en">A UDP service doesn’t answer, and the client gets “connection refused” right away</span><span class="uk">UDP-сервіс не відповідає, а клієнт одразу отримує «connection refused»</span></h3>
+      <p class="ex-p"><span class="en">Nothing is listening on that port. The kernel drops the datagram, counts it in <code>UdpNoPorts</code> (<code>nstat -az UdpNoPorts</code>) and sends back ICMP “port unreachable”, which the client reports as “connection refused”.</span><span class="uk">На цьому порту ніхто не слухає. Ядро відкидає датаграму, рахує її в <code>UdpNoPorts</code> (<code>nstat -az UdpNoPorts</code>) і відповідає ICMP «port unreachable», що клієнт показує як «connection refused».</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#ingress-udp-8"><span class="en">Receive UDP 8</span><span class="uk">Прийом UDP 8</span></a></p>
+    </div>
+    <div class="qa">
+      <h3><span class="en">A busy server loses new connections</span><span class="uk">Навантажений сервер втрачає нові з’єднання</span></h3>
+      <p class="ex-p"><span class="en">If the application doesn’t call <code>accept()</code> fast enough, the listening socket’s accept queue fills up. The final ACK of a new handshake is then dropped and <code>ListenOverflows</code> grows: <code>nstat -az TcpExtListenOverflows</code>.</span><span class="uk">Якщо застосунок не встигає викликати <code>accept()</code>, черга accept слухаючого сокета заповнюється. Тоді останній ACK нового рукостискання відкидається, і росте <code>ListenOverflows</code>: <code>nstat -az TcpExtListenOverflows</code>.</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#ingress-tcp-8"><span class="en">Receive 8</span><span class="uk">Прийом 8</span></a></p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="section-h"><span class="en">Firewall and NAT</span><span class="uk">Файрвол і NAT</span></h2>
+    <div class="qa">
+      <h3><span class="en">In which order do the iptables / nftables chains run?</span><span class="uk">У якому порядку виконуються ланцюжки iptables / nftables?</span></h3>
+      <p class="ex-p"><span class="en">It depends on where the packet goes. Into this host: PREROUTING → routing → INPUT. Out of this host: OUTPUT → POSTROUTING. Through it (a router): PREROUTING → routing → FORWARD → POSTROUTING. Before all of them, netdev <code>ingress</code> chains run on the interface; on the way out, netdev <code>egress</code> chains run on the device, before tc egress and the qdisc.</span><span class="uk">Залежить від того, куди йде пакет. Цьому хосту: PREROUTING → маршрутизація → INPUT. Від цього хоста: OUTPUT → POSTROUTING. Крізь нього (роутер): PREROUTING → маршрутизація → FORWARD → POSTROUTING. Раніше за всіх на інтерфейсі виконуються ланцюжки netdev <code>ingress</code>; на виході ланцюжки netdev <code>egress</code> працюють на пристрої, перед tc egress і qdisc.</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#ingress-tcp-5"><span class="en">Receive 5</span><span class="uk">Прийом 5</span></a> · <a href="./#ingress-tcp-7"><span class="en">Receive 7</span><span class="uk">Прийом 7</span></a> · <a href="./#egress-tcp-7"><span class="en">Send 7</span><span class="uk">Відправка 7</span></a> · <a href="./#egress-tcp-8"><span class="en">Send 8</span><span class="uk">Відправка 8</span></a> · <a href="./#forward-tcp-8"><span class="en">Forward 8</span><span class="uk">Пересилання 8</span></a> · <a href="./#ingress-tcp-4"><span class="en">Receive 4</span><span class="uk">Прийом 4</span></a> · <a href="./#egress-tcp-11"><span class="en">Send 11</span><span class="uk">Відправка 11</span></a></p>
+    </div>
+    <div class="qa">
+      <h3><span class="en">My INPUT rule doesn’t stop traffic going through the router</span><span class="uk">Правило в INPUT не зупиняє трафік, що йде крізь роутер</span></h3>
+      <p class="ex-p"><span class="en">A transit packet never passes INPUT or OUTPUT. It goes through FORWARD, so filtering rules for routed traffic belong there.</span><span class="uk">Транзитний пакет ніколи не проходить INPUT чи OUTPUT. Він іде через FORWARD, тож правила для трафіку, що маршрутизується, мають бути там.</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#forward-tcp-8"><span class="en">Forward 8</span><span class="uk">Пересилання 8</span></a></p>
+    </div>
+    <div class="qa">
+      <h3><span class="en">Where does NAT happen?</span><span class="uk">Де відбувається NAT?</span></h3>
+      <p class="ex-p"><span class="en">Destination NAT (port forwarding) runs in PREROUTING for incoming packets, before the routing decision, so the new address decides where the packet goes; for the host’s own connections the nat table runs in OUTPUT. Source NAT and masquerade run in POSTROUTING, after routing: that is how a home router or a Kubernetes node rewrites the source address to its own.</span><span class="uk">Destination NAT (проброс портів) виконується в PREROUTING для вхідних пакетів, до рішення маршрутизації, тож куди піде пакет, вирішує вже нова адреса; для власних з’єднань хоста таблиця nat працює в OUTPUT. Source NAT і masquerade виконуються в POSTROUTING, після маршрутизації: так домашній роутер чи вузол Kubernetes підміняє адресу відправника на свою.</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#ingress-tcp-5"><span class="en">Receive 5</span><span class="uk">Прийом 5</span></a> · <a href="./#egress-tcp-7"><span class="en">Send 7</span><span class="uk">Відправка 7</span></a> · <a href="./#forward-tcp-9"><span class="en">Forward 9</span><span class="uk">Пересилання 9</span></a></p>
+    </div>
+    <div class="qa">
+      <h3><span class="en">Does tcpdump show addresses before or after NAT?</span><span class="uk">tcpdump показує адреси до NAT чи після?</span></h3>
+      <p class="ex-p"><span class="en">Incoming packets: before. tcpdump gets its copy in <code>netif_receive_skb()</code>, before PREROUTING and its DNAT. Outgoing packets: after. The copy is taken by <code>dev_queue_xmit_nit()</code> at the moment the packet is handed to the driver, after POSTROUTING (SNAT) and the qdisc. So on a NAT router the outside interface shows the translated source address.</span><span class="uk">Вхідні пакети — до. tcpdump отримує копію в <code>netif_receive_skb()</code>, до PREROUTING і його DNAT. Вихідні — після. Копію робить <code>dev_queue_xmit_nit()</code> у момент, коли пакет передається драйверу, після POSTROUTING (SNAT) і qdisc. Тож на NAT-роутері зовнішній інтерфейс показує вже підмінену адресу відправника.</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#ingress-tcp-4"><span class="en">Receive 4</span><span class="uk">Прийом 4</span></a> · <a href="./#egress-tcp-8"><span class="en">Send 8</span><span class="uk">Відправка 8</span></a> · <a href="example.html#s2"><span class="en">live example, section 2</span><span class="uk">живий приклад, розділ 2</span></a></p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="section-h"><span class="en">Routing and neighbours</span><span class="uk">Маршрутизація і сусіди</span></h2>
+    <div class="qa">
+      <h3><span class="en">My Linux box doesn’t route packets</span><span class="uk">Мій Linux не маршрутизує пакети</span></h3>
+      <p class="ex-p"><span class="en">First, forwarding must be on: with <code>net.ipv4.ip_forward = 0</code> a packet for another host is simply dropped at the routing decision. Then the FORWARD chain must let it through. A packet whose TTL runs out is dropped too, and the sender gets ICMP “time exceeded”.</span><span class="uk">Спершу має бути ввімкнене пересилання: з <code>net.ipv4.ip_forward = 0</code> пакет для іншого хоста просто відкидається на рішенні маршрутизації. Далі його має пропустити ланцюжок FORWARD. Пакет, у якого закінчився TTL, теж відкидається, а відправник отримує ICMP «time exceeded».</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#ingress-tcp-6"><span class="en">Receive 6</span><span class="uk">Прийом 6</span></a> · <a href="./#forward-tcp-7"><span class="en">Forward 7</span><span class="uk">Пересилання 7</span></a> · <a href="./#forward-tcp-8"><span class="en">Forward 8</span><span class="uk">Пересилання 8</span></a></p>
+    </div>
+    <div class="qa">
+      <h3><span class="en">“No route to host” for a machine on the same network</span><span class="uk">«No route to host» до машини в тій самій мережі</span></h3>
+      <p class="ex-p"><span class="en">The route is fine, but nobody answered ARP. The kernel asks “who has this IP?” about three times; with no reply the neighbour entry goes from INCOMPLETE to FAILED, the waiting packets are dropped, and the local application gets “No route to host”. Check with <code>ip neigh show</code>.</span><span class="uk">Маршрут у порядку, але ніхто не відповів на ARP. Ядро питає «у кого ця IP?» приблизно тричі; без відповіді запис сусіда переходить з INCOMPLETE у FAILED, пакети, що чекали, відкидаються, а локальний застосунок отримує «No route to host». Перевір через <code>ip neigh show</code>.</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#egress-tcp-10"><span class="en">Send 10</span><span class="uk">Відправка 10</span></a></p>
+    </div>
+    <div class="qa">
+      <h3><span class="en">Small packets get through, large ones vanish</span><span class="uk">Малі пакети проходять, великі зникають</span></h3>
+      <p class="ex-p"><span class="en">Probably a Path MTU black hole. A router can’t forward a packet larger than the next link’s MTU when Don’t Fragment is set, so it drops it and sends back ICMP “fragmentation needed”. If a firewall on the way blocks that ICMP, the sender never learns to send smaller packets.</span><span class="uk">Ймовірно, «чорна діра» Path MTU. Роутер не може переслати пакет, більший за MTU наступного каналу, якщо стоїть Don’t Fragment, тому відкидає його і шле назад ICMP «fragmentation needed». Якщо файрвол по дорозі блокує цей ICMP, відправник так і не дізнається, що треба слати менші пакети.</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#forward-tcp-7"><span class="en">Forward 7</span><span class="uk">Пересилання 7</span></a></p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="section-h"><span class="en">Containers</span><span class="uk">Контейнери</span></h2>
+    <div class="qa">
+      <h3><span class="en">How does a packet get into a container behind a Linux bridge?</span><span class="uk">Як пакет потрапляє в контейнер за Linux-бриджем?</span></h3>
+      <p class="ex-p"><span class="en">The physical card is a bridge port, so its <code>rx_handler()</code> hands the frame to the bridge instead of IP. The bridge looks up the destination MAC and sends the frame out of the right port: the host end of the container’s veth pair. veth passes the same sk_buff to its peer, <code>eth0</code> in the container’s network namespace, and receiving starts again there. Between containers on one bridge, frames are switched at layer 2 and IP on the host never sees them.</span><span class="uk">Фізична карта — порт бриджа, тож її <code>rx_handler()</code> віддає кадр бриджу, а не IP. Бридж шукає MAC отримувача і відправляє кадр у потрібний порт: хостовий кінець veth-пари контейнера. veth передає той самий sk_buff своєму парному кінцю, <code>eth0</code> у мережевому просторі імен контейнера, і там прийом починається знову. Між контейнерами на одному бриджі кадри комутуються на рівні 2, і IP хоста їх не бачить.</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#ingress-tcp-4"><span class="en">Receive 4</span><span class="uk">Прийом 4</span></a> · <a href="./#bridge-tcp-5"><span class="en">Bridge 5</span><span class="uk">Бридж 5</span></a> · <a href="./#bridge-tcp-6"><span class="en">Bridge 6</span><span class="uk">Бридж 6</span></a> · <a href="./#bridge-tcp-8"><span class="en">Bridge 8</span><span class="uk">Бридж 8</span></a> · <a href="./#bridge-tcp-9"><span class="en">Bridge 9</span><span class="uk">Бридж 9</span></a></p>
+    </div>
+    <div class="qa">
+      <h3><span class="en">Kubernetes with Cilium: what is different?</span><span class="uk">Kubernetes із Cilium: що інакше?</span></h3>
+      <p class="ex-p"><span class="en">There is no bridge. A tc BPF program on the host interface sees the packet right after the sniffers, before netfilter and IP, and redirects it into the pod with <code>bpf_redirect_peer()</code>. The packet skips the veth transmit and the backlog queue and continues inside the pod in the same softirq run.</span><span class="uk">Бриджа немає. BPF-програма tc на інтерфейсі хоста бачить пакет одразу після сніферів, до netfilter і IP, і перенаправляє його в под через <code>bpf_redirect_peer()</code>. Пакет оминає відправку через veth і чергу backlog і продовжує шлях усередині пода в тому самому проході softirq.</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#tcredir-tcp-5"><span class="en">tc redirect 5</span><span class="uk">tc redirect 5</span></a> · <a href="./#tcredir-tcp-6"><span class="en">tc redirect 6</span><span class="uk">tc redirect 6</span></a></p>
+    </div>
+    <div class="qa">
+      <h3><span class="en">Why do iptables rules see traffic between pods on one bridge?</span><span class="uk">Чому правила iptables бачать трафік між подами на одному бриджі?</span></h3>
+      <p class="ex-p"><span class="en">Bridged frames normally bypass IP entirely. With the <code>br_netfilter</code> module loaded and <code>net.bridge.bridge-nf-call-iptables = 1</code>, IPv4 packets crossing the bridge also pass the regular iptables chains. Kubernetes relies on this to apply Service rules to traffic between pods on one node.</span><span class="uk">Кадри через бридж зазвичай повністю оминають IP. Якщо завантажений модуль <code>br_netfilter</code> і <code>net.bridge.bridge-nf-call-iptables = 1</code>, IPv4-пакети через бридж проходять і звичайні ланцюжки iptables. На цьому Kubernetes будує правила Service для трафіку між подами на одному вузлі.</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#bridge-tcp-5"><span class="en">Bridge 5</span><span class="uk">Бридж 5</span></a></p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="section-h"><span class="en">Multicast</span><span class="uk">Мультикаст</span></h2>
+    <div class="qa">
+      <h3><span class="en">How does a host start receiving a multicast group?</span><span class="uk">Як хост починає отримувати мультикаст-групу?</span></h3>
+      <p class="ex-p"><span class="en">An application joins the group with <code>setsockopt(IP_ADD_MEMBERSHIP)</code>. The kernel adds the group’s multicast MAC to the card’s filter and sends an IGMP membership report, so switches and routers start sending the group to this host. Check with <code>ip maddr show</code>.</span><span class="uk">Застосунок приєднується до групи через <code>setsockopt(IP_ADD_MEMBERSHIP)</code>. Ядро додає мультикаст-MAC групи у фільтр карти і шле IGMP membership report, щоб комутатори й роутери почали надсилати групу цьому хосту. Перевір через <code>ip maddr show</code>.</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#multicast-udp-2"><span class="en">Multicast 2</span><span class="uk">Мультикаст 2</span></a> · <a href="./#multicast-udp-8"><span class="en">Multicast 8</span><span class="uk">Мультикаст 8</span></a></p>
+    </div>
+    <div class="qa">
+      <h3><span class="en">How does Linux route multicast?</span><span class="uk">Як Linux маршрутизує мультикаст?</span></h3>
+      <p class="ex-p"><span class="en">Only with a multicast routing daemon such as pimd or smcroute, which turns multicast forwarding on. Then <code>ip_mr_input()</code> looks the group up in the multicast routing cache and sends copies out of the listed interfaces (<code>ip mroute show</code>).</span><span class="uk">Лише з демоном мультикаст-маршрутизації, як-от pimd чи smcroute, який вмикає мультикаст-пересилання. Тоді <code>ip_mr_input()</code> шукає групу в кеші мультикаст-маршрутів і відправляє копії в перелічені інтерфейси (<code>ip mroute show</code>).</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#ingress-udp-6"><span class="en">Receive UDP 6</span><span class="uk">Прийом UDP 6</span></a> · <a href="./#mcroute-udp-7"><span class="en">Multicast router 7</span><span class="uk">Мультикаст-роутер 7</span></a> · <a href="./#mcroute-udp-8"><span class="en">Multicast router 8</span><span class="uk">Мультикаст-роутер 8</span></a></p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="section-h"><span class="en">CPU and interrupts</span><span class="uk">CPU і переривання</span></h2>
+    <div class="qa">
+      <h3><span class="en">ksoftirqd eats CPU under network load</span><span class="uk">ksoftirqd їсть CPU під мережевим навантаженням</span></h3>
+      <p class="ex-p"><span class="en">The card’s interrupt handler only schedules NAPI. The packets themselves are processed in batches by the NET_RX softirq, and under load that work moves to the <code>ksoftirqd</code> threads. <code>/proc/net/softnet_stat</code> shows per CPU how many packets were processed and how often the budget ran out; <code>/proc/interrupts</code> shows which CPUs take the card’s interrupts.</span><span class="uk">Обробник переривання карти лише планує NAPI. Самі пакети обробляються пачками в softirq NET_RX, а під навантаженням ця робота переходить у потоки <code>ksoftirqd</code>. <code>/proc/net/softnet_stat</code> показує по кожному CPU, скільки пакетів оброблено і як часто закінчувався бюджет; <code>/proc/interrupts</code> — які CPU приймають переривання карти.</span></p>
+      <p class="ex-steps"><span class="en">See:</span><span class="uk">Дивись:</span> <a href="./#ingress-tcp-3"><span class="en">Receive 3</span><span class="uk">Прийом 3</span></a> · <a href="example.html#s7"><span class="en">live example, section 7</span><span class="uk">живий приклад, розділ 7</span></a></p>
+    </div>
+  </section>
+
+  <footer class="foot"><a href="https://github.com/antondemidov" target="_blank" rel="noopener">github.com/antondemidov</a></footer>
+</div>
+<script type="module" src="/src/example.ts"></script>
+</body>
+</html>

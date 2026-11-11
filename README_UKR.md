@@ -1,6 +1,6 @@
 # Шлях пакета в ядрі Linux
 
-**Сайт:** [packetpath.fyi](https://packetpath.fyi) · [живий приклад на справжньому хості](https://packetpath.fyi/example.html) · [English](README.md)
+**Сайт:** [packetpath.fyi](https://packetpath.fyi) · [живий приклад на справжньому хості](https://packetpath.fyi/example.html) · [FAQ](https://packetpath.fyi/faq.html) · [English](README.md)
 
 Інтерактивна покрокова симуляція того, як TCP/UDP-пакет проходить мережевий стек Linux:
 

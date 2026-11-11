@@ -1,6 +1,6 @@
 # A Packet's Path Through the Linux Kernel
 
-**Live:** [packetpath.fyi](https://packetpath.fyi) · [a live trace on a real host](https://packetpath.fyi/example.html) · [Українською](README_UKR.md)
+**Live:** [packetpath.fyi](https://packetpath.fyi) · [a live trace on a real host](https://packetpath.fyi/example.html) · [FAQ](https://packetpath.fyi/faq.html) · [Українською](README_UKR.md)
 
 An interactive, step-by-step simulation of how a TCP/UDP packet moves through the Linux network stack:
 

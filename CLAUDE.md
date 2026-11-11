@@ -16,7 +16,7 @@ UI: no autoplay (removed on purpose: steps are too dense to read on a timer). Na
 
 ## Live example page
 
-`example.html` (+ `src/example.ts`, a second Vite input) shows a real pwru trace of one `curl` TCP connection on a home server (Linux 7.0), with explanations and links to the matching steps. Text is inline in both languages (`<span class="en">` / `<span class="uk">`), the `<html lang>` picks one. Addresses are replaced with placeholders (10.0.0.x, 02:00:00:…), and the host is not named (no distribution, hostname or exact kernel build); never publish the real ones. `scripts/example.test.ts` checks both languages and the step links.
+`example.html` (+ `src/example.ts`, a second Vite input) shows a real pwru trace of one `curl` TCP connection on a home server (Linux 7.0), with explanations and links to the matching steps. Text is inline in both languages (`<span class="en">` / `<span class="uk">`), the `<html lang>` picks one. Addresses are replaced with placeholders (10.0.0.x, 02:00:00:…), and the host is not named (no distribution, hostname or exact kernel build); never publish the real ones. `faq.html` is a FAQ for admins: short answers built only from already verified step texts, each linking to its steps. `scripts/pages.test.ts` checks both pages: both languages, no Latin letters inside Ukrainian words, step and section links.
 
 ## Sources and accuracy rules
 
