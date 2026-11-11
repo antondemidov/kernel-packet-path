@@ -516,8 +516,8 @@ const FWD_NOTE_SCOPE: Txt = {
 
 const F_MID: Step[] = [
   routeDecision(0, {
-    en: "<p><code>ip_route_input_noref()</code> looks up a route for the destination address. It doesn’t belong to any interface on this host, and forwarding is enabled (<code>net.ipv4.ip_forward = 1</code>), so the route gets the <code>ip_forward()</code> handler.</p><p>If forwarding is disabled, the router simply drops the packet. That is the most common answer to “why doesn’t my Linux router route”.</p>",
-    uk: "<p><code>ip_route_input_noref()</code> шукає маршрут для адреси призначення. Вона не належить жодному інтерфейсу цього хоста, і пересилання ввімкнене (<code>net.ipv4.ip_forward = 1</code>), тож маршрут отримує обробник <code>ip_forward()</code>.</p><p>Якщо пересилання вимкнене, маршрутизатор пакет просто відкине. Це найчастіша причина «чому мій Linux-роутер не роутить».</p>",
+    en: "<p>In this scenario the packet is addressed to some other host: its destination IP is not one of this host’s own addresses. <code>ip_route_input_noref()</code> looks up the route for that address, and since forwarding is enabled (<code>net.ipv4.ip_forward = 1</code>), the route gets the <code>ip_forward()</code> handler.</p><p>If forwarding is disabled, the router simply drops the packet. That is the most common answer to “why doesn’t my Linux router route”.</p>",
+    uk: "<p>У цьому сценарії пакет адресований іншому хосту: його IP призначення не є жодною з власних адрес цього хоста. <code>ip_route_input_noref()</code> шукає маршрут до цієї адреси, і оскільки пересилання ввімкнене (<code>net.ipv4.ip_forward = 1</code>), маршрут отримує обробник <code>ip_forward()</code>.</p><p>Якщо пересилання вимкнене, маршрутизатор пакет просто відкине. Це найчастіша причина «чому мій Linux-роутер не роутить».</p>",
   }),
   {
     l: "ip", fn: "ip_forward()", data: "IP", f: F_ALL,
