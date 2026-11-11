@@ -6,7 +6,7 @@ import { annotate, TERMS, termUrl } from "./glossary";
 import { UI, type Lang, type Txt } from "./i18n";
 import { buildSteps, CMDS, type Mode, type Proto, type Step } from "./steps";
 
-const MODES: Mode[] = ["egress", "ingress", "forward"];
+const MODES: Mode[] = ["egress", "ingress", "forward", "multicast"];
 const PROTOS: Proto[] = ["tcp", "udp"];
 const LANGS: Lang[] = ["en", "uk"];
 const scenarios = MODES.flatMap((m) => PROTOS.map((p) => ({ m, p, steps: buildSteps(m, p) })));

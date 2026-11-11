@@ -5,7 +5,7 @@
 
 import type { Tx, Txt } from "./i18n";
 
-export type Mode = "egress" | "ingress" | "forward";
+export type Mode = "egress" | "ingress" | "forward" | "multicast";
 export type Proto = "tcp" | "udp";
 export type Kernel = "5.10" | "7.3";
 export type Layer = "app" | "socket" | "transport" | "ip" | "link" | "nic" | "wire";
@@ -73,8 +73,8 @@ export const LAYER_SHORT: Record<Layer, Txt> = {
 export const LAYER_ORDER: Layer[] = ["app", "socket", "transport", "ip", "link", "nic", "wire"];
 
 export const HOOKS: { id: Hook; chain: string; short: string; modes: Mode[] }[] = [
-  { id: "PRE_ROUTING", chain: "PREROUTING", short: "PRE", modes: ["ingress", "forward"] },
-  { id: "LOCAL_IN", chain: "INPUT", short: "IN", modes: ["ingress"] },
+  { id: "PRE_ROUTING", chain: "PREROUTING", short: "PRE", modes: ["ingress", "forward", "multicast"] },
+  { id: "LOCAL_IN", chain: "INPUT", short: "IN", modes: ["ingress", "multicast"] },
   { id: "FORWARD", chain: "FORWARD", short: "FWD", modes: ["forward"] },
   { id: "LOCAL_OUT", chain: "OUTPUT", short: "OUT", modes: ["egress"] },
   { id: "POST_ROUTING", chain: "POSTROUTING", short: "POST", modes: ["egress", "forward"] },
@@ -421,7 +421,7 @@ const routeDecision = (pick: number): Step => ({
   br: [
     ["ip_forward()", { en: "not for us → forward", uk: "не нам → пересилання" }, ROUTE_FWD, "forward"],
     ["ip_local_deliver()", { en: "for us → up the stack", uk: "нам → нагору по стеку" }, ROUTE_LOCAL, "ingress"],
-    ["ip_mr_input()", "multicast", ROUTE_MC, "out"],
+    ["ip_route_input_mc()", { en: "multicast group", uk: "multicast-група" }, ROUTE_MC, "multicast"],
   ],
   brPick: pick,
   d: [ROUTE_FWD, ROUTE_LOCAL, ROUTE_MC][pick],
@@ -615,6 +615,86 @@ const F_MID: Step[] = [
   },
 ];
 
+/* ---------------- MULTICAST ---------------- */
+// Receiving a UDP datagram sent to a multicast group this host has joined. Not covered by the paper;
+// built from net/ipv4/igmp.c, route.c (ip_route_input_mc), ipmr.c and udp.c (__udp4_lib_mcast_deliver) in 5.10 and 7.3.
+
+const MC_SCOPE: Txt = {
+  en: "<b>Beyond the paper.</b> The paper doesn’t cover multicast. This scenario is built from <code>net/ipv4/igmp.c</code>, <code>route.c</code>, <code>ipmr.c</code> and <code>udp.c</code> in kernels 5.10 and 7.3.",
+  uk: "<b>Поза статтею.</b> Стаття не розбирає multicast. Цей сценарій зібрано за кодом <code>net/ipv4/igmp.c</code>, <code>route.c</code>, <code>ipmr.c</code> і <code>udp.c</code> ядер 5.10 і 7.3.",
+};
+
+const M_JOIN: Step = {
+  l: "socket", fn: "setsockopt(IP_ADD_MEMBERSHIP) → ip_mc_join_group()", user: true,
+  t: { en: "The application joins a group", uk: "Застосунок підписується на групу" },
+  d: {
+    en: "<p>Before any multicast packet can arrive, an application opens a UDP socket, binds it to a port (say 5000) and joins a group, for example 239.1.2.3, with <code>setsockopt(IP_ADD_MEMBERSHIP)</code>. <code>ip_mc_join_group()</code> adds the group to the socket’s membership list, and <code>____ip_mc_inc_group()</code> adds it to the interface, counting how many sockets use it.</p><p>When an interface joins a group for the first time, two things happen. <code>ip_mc_filter_add()</code> turns the group address into a multicast MAC and calls <code>dev_mc_add()</code>, so the driver adds it to the card’s receive filter. And <code>igmp_group_added()</code> sends an IGMP membership report (IGMPv3 unless the network’s querier speaks an older version), so routers and switches with IGMP snooping start sending the group’s traffic to this port.</p>",
+    uk: "<p>Щоб multicast-пакет узагалі прийшов, застосунок відкриває UDP-сокет, прив’язує його до порту (скажімо, 5000) і підписується на групу, наприклад 239.1.2.3, через <code>setsockopt(IP_ADD_MEMBERSHIP)</code>. <code>ip_mc_join_group()</code> додає групу до списку членства сокета, а <code>____ip_mc_inc_group()</code> — до інтерфейсу, рахуючи, скільки сокетів її використовують.</p><p>Коли інтерфейс уперше підписується на групу, стаються дві речі. <code>ip_mc_filter_add()</code> перетворює адресу групи на multicast-MAC і викликає <code>dev_mc_add()</code>, тож драйвер додає її у фільтр прийому карти. А <code>igmp_group_added()</code> надсилає IGMP-звіт про членство (IGMPv3, якщо querier у мережі не говорить старішою версією), і роутери та комутатори з IGMP snooping починають слати трафік групи на цей порт.</p>",
+  },
+  note: MC_SCOPE,
+};
+
+const M_WIRE: Step = {
+  l: "wire", fn: "Ethernet frame → 01:00:5e:01:02:03", raw: true,
+  t: { en: "A frame for the group arrives", uk: "Приходить кадр для групи" },
+  d: {
+    en: "<p>A sender somewhere on the network sends a UDP datagram to 239.1.2.3:5000. On Ethernet, the destination MAC is derived from the group address: the prefix 01:00:5e followed by the lowest 23 bits of the IP address, so 239.1.2.3 becomes 01:00:5e:01:02:03. Five bits of the address are lost, which means 32 groups share every multicast MAC.</p><p>A plain switch floods multicast frames to all ports; a switch with IGMP snooping sends them only to ports where a member answered with a report.</p>",
+    uk: "<p>Відправник десь у мережі шле UDP-датаграму на 239.1.2.3:5000. В Ethernet MAC одержувача виводиться з адреси групи: префікс 01:00:5e і молодші 23 біти IP-адреси, тож 239.1.2.3 стає 01:00:5e:01:02:03. П’ять бітів адреси губляться, тому кожну multicast-MAC ділять 32 групи.</p><p>Звичайний комутатор розсилає multicast-кадри на всі порти; комутатор з IGMP snooping — лише на порти, звідки член групи відповів звітом.</p>",
+  },
+};
+
+const M_NIC: Step = {
+  l: "nic", fn: "multicast MAC filter, DMA → RX ring, IRQ", raw: true, q: "rxring",
+  t: { en: "The card’s filter lets the frame in", uk: "Фільтр карти пропускає кадр" },
+  d: {
+    en: "<p>The card accepts a multicast frame only if its MAC is in the multicast filter the driver programmed after <code>dev_mc_add()</code>, or if the interface is in all-multicast or promiscuous mode. Many cards use a hash for this filter, so frames for other groups can slip through too; the kernel sorts them out later.</p><p>The rest is the same as for any frame: FCS check, DMA into the <b>RX ring</b>, an interrupt.</p>",
+    uk: "<p>Карта приймає multicast-кадр, лише якщо його MAC є в multicast-фільтрі, який драйвер запрограмував після <code>dev_mc_add()</code>, або якщо інтерфейс у режимі all-multicast чи promiscuous. Багато карт використовують для цього фільтра хеш, тож можуть пройти й кадри інших груп; ядро відсіє їх пізніше.</p><p>Далі все як для будь-якого кадру: перевірка FCS, DMA в <b>RX ring</b>, переривання.</p>",
+  },
+};
+
+const M_ROUTE: Step = {
+  l: "ip", fn: "ip_rcv_finish() → dst_input()", data: "IP", f: F_ALL,
+  t: { en: "Routing decision for a group address", uk: "Рішення маршрутизації для адреси групи" },
+  br: [
+    [{ en: "member", uk: "член групи" }, { en: "joined → deliver locally", uk: "підписаний → доставити локально" },
+      { en: "This host has joined the group on this interface: the packet is delivered locally through <code>ip_local_deliver()</code>.", uk: "Хост підписаний на групу на цьому інтерфейсі: пакет доставляється локально через <code>ip_local_deliver()</code>." }, "multicast"],
+    ["ip_mr_input()", { en: "multicast router", uk: "multicast-роутер" },
+      { en: "<p>In this case the host is a multicast router: multicast forwarding is on for the interface (a daemon such as pimd or smcroute turns it on) and the group is not link-local. <code>ip_mr_input()</code> looks the (source, group) pair up in the multicast forwarding cache and sends a copy out of every interface listed there, through the FORWARD hook. If the host is also a member, it delivers one copy locally as well.</p><p>If there is no cache entry yet, the packet waits while the routing daemon is asked to resolve it.</p>",
+        uk: "<p>У цьому випадку хост — multicast-роутер: на інтерфейсі ввімкнене multicast-пересилання (його вмикає демон на кшталт pimd чи smcroute), а група не link-local. <code>ip_mr_input()</code> шукає пару (джерело, група) у кеші multicast-пересилання й шле копію на кожен інтерфейс із нього, через хук FORWARD. Якщо хост ще й член групи, одну копію він доставляє локально.</p><p>Якщо запису в кеші ще нема, пакет чекає, поки демон маршрутизації його визначить.</p>" }, "out"],
+    [{ en: "neither", uk: "ні те, ні інше" }, { en: "dropped", uk: "відкидається" },
+      { en: "<p>In this case the host hasn’t joined the group on this interface and doesn’t route multicast. No route is created, and the packet is dropped. This is what happens to frames for other groups that slipped through the card’s hash filter.</p>",
+        uk: "<p>У цьому випадку хост не підписаний на групу на цьому інтерфейсі й не маршрутизує multicast. Маршрут не створюється, пакет відкидається. Саме це стається з кадрами інших груп, що проскочили хеш-фільтр карти.</p>" }, "end"],
+  ],
+  brPick: 0,
+  d: {
+    en: "<p>The destination is a multicast address, so routing takes a separate path: <code>ip_route_input_mc()</code>. First <code>ip_check_mc_rcu()</code> checks whether this interface has joined the group (and, with IGMPv3 source filters, whether this sender is allowed). It has, so the route gets the <code>ip_local_deliver()</code> handler.</p><p>Unlike unicast, there is no lookup in the routing table for where the packet goes: the membership list decides.</p>",
+    uk: "<p>Адреса одержувача — multicast, тож маршрутизація йде окремим шляхом: <code>ip_route_input_mc()</code>. Спершу <code>ip_check_mc_rcu()</code> перевіряє, чи підписаний цей інтерфейс на групу (і, з фільтрами джерел IGMPv3, чи дозволений цей відправник). Підписаний, тож маршрут отримує обробник <code>ip_local_deliver()</code>.</p><p>На відміну від unicast, таблицю маршрутизації не питають, куди йде пакет: вирішує список членства.</p>",
+  },
+};
+
+const M_UDP: Step = {
+  l: "transport", fn: "udp_rcv() → __udp4_lib_mcast_deliver()", k510: { fn: "udp_rcv() → __udp4_lib_rcv() → __udp4_lib_mcast_deliver()" }, data: "L4", f: F_ALL, q: "rq",
+  t: { en: "A copy for every member socket", uk: "Копія кожному сокету-члену" },
+  br: [
+    [{ en: "member sockets", uk: "є сокети-члени" }, { en: "each gets a copy", uk: "кожен отримує копію" },
+      { en: "Each socket that matches gets the datagram in its receive queue.", uk: "Кожен відповідний сокет отримує датаграму в свою чергу прийому." }],
+    [{ en: "no socket", uk: "нема сокета" }, { en: "dropped silently", uk: "тихо відкидається" },
+      { en: "<p>In this case no socket on this port has joined the group (the interface may still be a member because of another application, or the frame slipped through the filter). The datagram is dropped and the <code>IgnoredMulti</code> counter grows; unlike unicast, no ICMP “port unreachable” is sent, so a group with many receivers can’t trigger a storm of replies.</p>",
+        uk: "<p>У цьому випадку жоден сокет на цьому порту не підписаний на групу (інтерфейс може бути членом через інший застосунок, або кадр проскочив фільтр). Датаграма відкидається, зростає лічильник <code>IgnoredMulti</code>; на відміну від unicast, ICMP «port unreachable» не шлеться, тож група з багатьма одержувачами не викличе зливи відповідей.</p>" }, "end"],
+  ],
+  brPick: 0,
+  d: {
+    en: "<p>The route is marked as multicast, so <code>udp_rcv()</code> hands the datagram to <code>__udp4_lib_mcast_deliver()</code>. It walks all sockets bound to the destination port, and <code>__udp_is_mcast_sock()</code> keeps those that fit: bound to the group or to any address, not bound to another device, and joined to this group with this sender allowed (<code>ip_mc_sf_allow()</code>).</p><p>Every matching socket gets the datagram: the first one the original <code>sk_buff</code>, the others clones that share the same data. So two programs listening to the same group each get their own copy.</p>",
+    uk: "<p>Маршрут позначений як multicast, тож <code>udp_rcv()</code> передає датаграму в <code>__udp4_lib_mcast_deliver()</code>. Вона перебирає всі сокети, прив’язані до порту призначення, а <code>__udp_is_mcast_sock()</code> залишає ті, що підходять: прив’язані до групи чи до будь-якої адреси, не прив’язані до іншого пристрою, і підписані на цю групу з дозволом для цього відправника (<code>ip_mc_sf_allow()</code>).</p><p>Кожен відповідний сокет отримує датаграму: перший — оригінальний <code>sk_buff</code>, інші — клони, що ділять ті самі дані. Тож дві програми, які слухають одну групу, отримують кожна свою копію.</p>",
+  },
+  diff: {
+    en: "<b>5.10 → 7.3.</b> The path is the same; in 5.10 the multicast branch is taken inside <code>__udp4_lib_rcv()</code>, which 7.3 folded into <code>udp_rcv()</code> together with removing UDP-Lite.",
+    uk: "<b>5.10 → 7.3.</b> Шлях той самий; у 5.10 гілку multicast обирає <code>__udp4_lib_rcv()</code>, яку 7.3 влило в <code>udp_rcv()</code> разом із прибиранням UDP-Lite.",
+  },
+};
+
+const MC_STEPS: Step[] = [M_JOIN, M_WIRE, M_NIC, ...IN_LOWER.slice(2), M_ROUTE, I_UPPER[1], M_UDP, I_SOCK.udp, I_APP];
+
 /* ---------------- LIVE SYSTEM COMMANDS ---------------- */
 // Commands to observe each step on a running machine. Keyed by step `fn`; the raw incoming frame uses "wire-in".
 // Counter names (nstat) and tracepoints (perf trace) exist in both 5.10 and 7.3.
@@ -670,6 +750,10 @@ export const CMDS: Record<string, Cmd[]> = {
   "read() → tcp_recvmsg() → tcp_recvmsg_locked()": [C_SS_TCP, C_STRACE_R],
   "read() → udp_recvmsg()": [C_SS_UDP, C_STRACE_R],
   "buf": [C_STRACE_R],
+  "setsockopt(IP_ADD_MEMBERSHIP) → ip_mc_join_group()": [c("ip maddr show dev eth0", "groups the interface has joined, with the multicast MAC addresses in the card’s filter", "групи, на які підписаний інтерфейс, і multicast-MAC у фільтрі карти"), c("cat /proc/net/igmp", "joined groups per interface, with user counts and the IGMP version of the querier", "групи по інтерфейсах із кількістю користувачів і версією IGMP querier-а")],
+  "Ethernet frame → 01:00:5e:01:02:03": [c("tcpdump -ni eth0 -e multicast", "multicast frames with their 01:00:5e… MAC addresses", "multicast-кадри з їхніми MAC 01:00:5e…")],
+  "multicast MAC filter, DMA → RX ring, IRQ": [c("ip maddr show dev eth0", "the multicast MACs the card is told to accept", "multicast-MAC, які карта має приймати"), c("ip -s link show dev eth0", "the RX “mcast” column counts multicast packets received", "колонка RX «mcast» рахує отримані multicast-пакети")],
+  "udp_rcv() → __udp4_lib_mcast_deliver()": [c("nstat -az UdpIgnoredMulti UdpInDatagrams", "multicast/broadcast datagrams no socket wanted, and datagrams read by applications", "multicast/broadcast-датаграми, яких не захотів жоден сокет, і датаграми, прочитані застосунками"), C_SS_UDP],
   "ip_forward()": [c("sysctl net.ipv4.ip_forward", "whether forwarding is enabled", "чи ввімкнене пересилання"), c("nstat -az IpForwDatagrams IpInHdrErrors", "forwarded packets, and drops such as expired TTL", "переслані пакети й дропи на кшталт вичерпаного TTL"), c("traceroute -n 1.1.1.1", "the TTL mechanism from the outside: every hop answers “time exceeded”", "механізм TTL ззовні: кожен хоп відповідає «time exceeded»")],
   "NF_HOOK(FORWARD) → ip_forward_finish()": [c("iptables -L FORWARD -v -n", "FORWARD chain rules with counters: did the packet get here?", "правила ланцюжка FORWARD з лічильниками: чи дійшов пакет сюди?"), C_NFT],
   "dst_output() → ip_output()": [c("iptables -t nat -L POSTROUTING -v -n", "SNAT/masquerade rules with counters", "правила SNAT/masquerade з лічильниками"), C_CONNTRACK],
@@ -679,6 +763,7 @@ export function buildSteps(mode: Mode, proto: Proto): Step[] {
   const list =
     mode === "egress" ? [...E_APP, ...(proto === "tcp" ? E_TCP : E_UDP), ...E_TAIL]
     : mode === "ingress" ? [...IN_LOWER, ...I_UPPER, ...(proto === "tcp" ? I_TCP : I_UDP), I_SOCK[proto], I_APP]
-    : [...IN_LOWER, ...F_MID];
+    : mode === "forward" ? [...IN_LOWER, ...F_MID]
+    : MC_STEPS; // multicast is UDP only
   return list.map((st) => ({ ...st, cmd: CMDS[st.raw ? "wire-in" : st.fn] }));
 }

@@ -8,7 +8,7 @@ A static site (Vite + TypeScript, no framework): an interactive simulation of a 
 
 UI is bilingual: English by default, Ukrainian via the EN/UA toggle (choice saved in localStorage). Every user-visible string must exist in both languages.
 
-Three scenarios: egress, ingress, forward; each for TCP and UDP. Step data and step texts live in `src/steps.ts`, UI strings in `src/i18n.ts`, logic in `src/main.ts`. Static HTML text is filled via `data-i18n` / `data-i18n-html` / `data-i18n-aria` attributes.
+Four scenarios: egress, ingress, forward (each for TCP and UDP) and multicast (UDP only: joining a group, then receiving a datagram for it). Step data and step texts live in `src/steps.ts`, UI strings in `src/i18n.ts`, logic in `src/main.ts`. Static HTML text is filled via `data-i18n` / `data-i18n-html` / `data-i18n-aria` attributes.
 
 URL hash: `#<mode>-<proto>-<step>[-v5]`, e.g. `#ingress-udp-8-v5` for 5.10 (old `-v7` links still open 7.3).
 

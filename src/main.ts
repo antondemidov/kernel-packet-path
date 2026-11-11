@@ -40,10 +40,10 @@ const rank = (s: Step) => LAYER_ORDER.indexOf(s.l);
 
 /* ---------- URL: #egress-tcp, #forward-udp-7, #ingress-tcp-5-v5 … to share a scenario, step and kernel (-v5 = Linux 5.10) ---------- */
 function readHash() {
-  const m = location.hash.match(/^#(egress|ingress|forward)-(tcp|udp)(?:-(\d+))?(-v5|-v7)?$/);
+  const m = location.hash.match(/^#(egress|ingress|forward|multicast)-(tcp|udp)(?:-(\d+))?(-v5|-v7)?$/);
   if (!m) return false;
   mode = m[1] as Mode;
-  proto = m[2] as Proto;
+  proto = m[1] === "multicast" ? "udp" : (m[2] as Proto);
   kernel = m[4] === "-v5" ? "5.10" : "7.3"; // "-v7" is accepted for old links
   steps = buildSteps(mode, proto);
   i = m[3] ? Math.min(steps.length - 1, Math.max(0, +m[3] - 1)) : 0;
@@ -97,7 +97,8 @@ function renderSkb(s: Step) {
   const box = $("skb");
   const state = $("skbstate");
   if (s.user) {
-    state.textContent = ui(mode === "egress" ? "skbNone" : "skbFreed");
+    // before the packet exists (sending, or joining a group) vs after it has been read
+    state.textContent = ui(mode === "egress" || i === 0 ? "skbNone" : "skbFreed");
     box.innerHTML = `<div class="ubuf"><div class="blk">${ui("ubufBlk")}</div><span>${ui("ubufTxt")}</span></div>`;
     return;
   }
@@ -276,7 +277,12 @@ function renderList() {
 
 function syncToggles() {
   document.querySelectorAll<HTMLElement>("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
-  document.querySelectorAll<HTMLElement>("[data-proto]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.proto === proto)));
+  document.querySelectorAll<HTMLButtonElement>("[data-proto]").forEach((b) => {
+    b.setAttribute("aria-pressed", String(b.dataset.proto === proto));
+    // multicast is UDP only
+    b.disabled = mode === "multicast" && b.dataset.proto === "tcp";
+    b.title = b.disabled ? ui("tcpNoMc") : "";
+  });
   document.querySelectorAll<HTMLElement>("[data-kernel]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.kernel === kernel)));
   document.querySelectorAll<HTMLElement>("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
   const ver = ELIXIR[kernel].slice(1);
@@ -349,6 +355,7 @@ $("branches").addEventListener("click", (e) => {
   if (next && next !== "end" && next !== "out") {
     // The packet continues as another scenario: switch to it at this same step
     mode = next;
+    if (mode === "multicast") proto = "udp";
     steps = buildSteps(mode, proto);
     i = Math.max(0, steps.findIndex((x) => x.fn === s.fn));
     alt = undefined;
@@ -379,6 +386,7 @@ function go(d: number) {
 document.querySelectorAll<HTMLElement>("[data-mode]").forEach((b) => {
   b.onclick = () => {
     mode = b.dataset.mode as Mode;
+    if (mode === "multicast") proto = "udp";
     reset();
   };
 });

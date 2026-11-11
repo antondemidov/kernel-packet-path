@@ -7,6 +7,7 @@
 - **Відправка (egress):** `write()` → сокет → TCP/UDP → IP + netfilter → neighbour/ARP → qdisc → TX ring → лінія
 - **Прийом (ingress):** лінія → RX ring → NAPI → `netif_receive_skb()` → IP + netfilter → TCP/UDP → сокет → `read()`
 - **Пересилання (forward):** пакет проходить хост як роутер: PREROUTING → FORWARD → POSTROUTING
+- **Multicast:** підписка на групу (IGMP, MAC-фільтр карти), потім UDP-датаграма для групи, яку отримує кожен сокет-член
 
 На кожному кроці видно функцію ядра, пояснення, стан `sk_buff` (які заголовки є, куди вказує `data`, які `*_header` виставлені), активну чергу й хук netfilter. Карта шляху показує весь маршрут через рівні стеку одразу.
 
