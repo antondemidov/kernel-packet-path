@@ -15,12 +15,12 @@ export const UI = {
   },
   eyebrow: { en: "Linux {k} · TCP/IPv4 and UDP/IPv4", uk: "Linux {k} · TCP/IPv4 і UDP/IPv4" },
   lede: {
-    en: "A step-by-step simulation based on A. Stephan, L. Wüstrich, <a href=\"https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2024-04-1/NET-2024-04-1_16.pdf\" target=\"_blank\" rel=\"noopener\">“The Path of a Packet Through the Linux Kernel”</a> (TUM, 2024). The walkthrough follows the usual path of a packet; where the kernel makes a decision, you can pick another outcome and see where the packet goes then. Step with ← → or click any point on the path map.",
-    uk: "Покрокова симуляція за статтею A. Stephan, L. Wüstrich, <a href=\"https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2024-04-1/NET-2024-04-1_16.pdf\" target=\"_blank\" rel=\"noopener\">«The Path of a Packet Through the Linux Kernel»</a> (TUM, 2024). Симуляція показує звичайний шлях пакета; там, де ядро ухвалює рішення, можна обрати інший варіант і подивитися, куди тоді піде пакет. Гортай кроки стрілками ← → або клікай точки на карті шляху.",
+    en: "How a packet moves through the Linux network stack, step by step. Based on A. Stephan, L. Wüstrich, <a href=\"https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2024-04-1/NET-2024-04-1_16.pdf\" target=\"_blank\" rel=\"noopener\">“The Path of a Packet Through the Linux Kernel”</a> (TUM, 2024).",
+    uk: "Як пакет проходить мережевий стек Linux, крок за кроком. За статтею A. Stephan, L. Wüstrich, <a href=\"https://www.net.in.tum.de/fileadmin/TUM/NET/NET-2024-04-1/NET-2024-04-1_16.pdf\" target=\"_blank\" rel=\"noopener\">«The Path of a Packet Through the Linux Kernel»</a> (TUM, 2024).",
   },
   sources: {
-    en: "Every step is checked against the kernel source: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">Linux {ver} on Elixir</a>; function names link to their definitions. The walkthrough follows Linux 7.3; switch to 5.10, the kernel the paper describes, to see it as it was there. Blue “5.10 → 7.3” boxes show what differs between the two; grey “Correction” boxes mark where the paper simplifies or disagrees with the code. The “Forward” scenario and the multicast paths (pick the multicast outcome at the routing decision) aren’t in the paper and are built from the code.",
-    uk: "Кожен крок звірено з кодом ядра: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">Linux {ver} на Elixir</a>; назви функцій ведуть до їхніх визначень. Симуляція показує Linux 7.3; перемкнися на 5.10, ядро, яке описує стаття, щоб побачити, як було там. Сині блоки «5.10 → 7.3» — чим відрізняються ці ядра; сірі «Уточнення» — де стаття спрощує або розходиться з кодом. Сценарію «Пересилання» і шляхів multicast (обери варіант multicast на кроці маршрутизації) у статті нема, вони зібрані за кодом.",
+    en: "Checked against the <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">Linux {ver} source</a>. Where the kernel makes a decision, pick another outcome to see where the packet goes.",
+    uk: "Звірено з <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">кодом Linux {ver}</a>. Там, де ядро ухвалює рішення, обери інший варіант і подивись, куди піде пакет.",
   },
   direction: { en: "Direction", uk: "Напрям" },
   protocol: { en: "Protocol", uk: "Протокол" },
