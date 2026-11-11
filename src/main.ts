@@ -1,4 +1,5 @@
 import "./style.css";
+import { annotate, SOURCE_LABEL, TERMS, termUrl } from "./glossary";
 import { tr, UI, type Lang, type Txt, type UIKey } from "./i18n";
 import { buildSteps, HOOKS, LAYER_NAMES, LAYER_ORDER, LAYER_SHORT, type Kernel, type Mode, type Proto, type Seg, type Step } from "./steps";
 
@@ -129,16 +130,19 @@ function render() {
   $("where").textContent = `${String(i + 1).padStart(2, "0")} · ${t(LAYER_NAMES[s.l])}`;
   $("fn").innerHTML = fnHtml(fnOf(s));
   $("title").textContent = t(s.t);
-  $("desc").innerHTML = t(s.d);
+  // Each glossary term is marked once per step, across the description and both notes
+  const used = new Set<number>();
+  $("desc").innerHTML = annotate(t(s.d), used);
 
   const note = $("note");
   note.hidden = !s.note;
-  note.innerHTML = s.note ? t(s.note) : "";
+  note.innerHTML = s.note ? annotate(t(s.note), used) : "";
 
   const chg = $("v7");
   chg.hidden = !v7();
   chg.classList.toggle("none", !s.v7);
-  chg.innerHTML = s.v7 ? t(s.v7.note) : ui("v7none");
+  chg.innerHTML = s.v7 && v7() ? annotate(t(s.v7.note), used) : ui("v7none");
+  hideTip();
 
   const br = $("branches");
   br.hidden = !s.br;
@@ -255,6 +259,49 @@ function reset(keepIndex = false) {
   render();
 }
 
+/* ---------- Glossary tooltip: hover or focus on desktop, tap on touch screens ---------- */
+const tip = document.createElement("div");
+tip.className = "tip";
+tip.setAttribute("role", "tooltip");
+tip.hidden = true;
+document.body.append(tip);
+let tipFor: HTMLElement | null = null;
+let hideTimer: number | undefined;
+
+function showTip(el: HTMLElement) {
+  clearTimeout(hideTimer);
+  if (tipFor === el && !tip.hidden) return;
+  const k = Number(el.dataset.t);
+  const term = TERMS[k];
+  tip.innerHTML = `<b>${esc(el.textContent ?? "")}</b> ${esc(term.def[lang])} <a href="${termUrl(k, lang)}" target="_blank" rel="noopener">${SOURCE_LABEL[term.src][lang]} ↗</a>`;
+  tip.hidden = false;
+  tipFor = el;
+  const r = el.getBoundingClientRect();
+  const w = tip.offsetWidth;
+  const left = Math.max(8, Math.min(r.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - w - 8));
+  const below = r.bottom + tip.offsetHeight + 12 < window.innerHeight;
+  tip.style.left = `${left}px`;
+  tip.style.top = `${below ? r.bottom + window.scrollY + 6 : r.top + window.scrollY - tip.offsetHeight - 6}px`;
+}
+function hideTip() {
+  tip.hidden = true;
+  tipFor = null;
+}
+const hideSoon = () => { hideTimer = window.setTimeout(hideTip, 200); };
+const termOf = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>(".term");
+
+document.addEventListener("mouseover", (e) => { const el = termOf(e); if (el) showTip(el); });
+document.addEventListener("mouseout", (e) => { if (termOf(e)) hideSoon(); });
+document.addEventListener("focusin", (e) => { const el = termOf(e); if (el) showTip(el); });
+document.addEventListener("focusout", (e) => { if (termOf(e) && !tip.contains(e.relatedTarget as Node)) hideSoon(); });
+document.addEventListener("click", (e) => {
+  const el = termOf(e);
+  if (el) showTip(el);
+  else if (!tip.contains(e.target as Node)) hideTip();
+});
+tip.addEventListener("mouseenter", () => clearTimeout(hideTimer));
+tip.addEventListener("mouseleave", hideSoon);
+
 /* ---------- Controls ---------- */
 function go(d: number) {
   i = Math.max(0, Math.min(steps.length - 1, i + d));
@@ -292,6 +339,7 @@ $("next").onclick = () => go(1);
 
 document.addEventListener("keydown", (e) => {
   if (e.target instanceof HTMLInputElement) return;
+  if (e.key === "Escape") return hideTip();
   if (e.key === "ArrowRight") go(1);
   else if (e.key === "ArrowLeft") go(-1);
 });

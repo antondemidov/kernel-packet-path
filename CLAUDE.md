@@ -23,6 +23,13 @@ UI: no autoplay (removed on purpose: steps are too dense to read on a timer). Na
 - Where the paper disagrees with the code, the step text follows the code, and the `note` field explains the discrepancy (shown as "Correction" / "Уточнення").
 - The forward scenario is not covered by the paper; it is built from `net/ipv4/ip_forward.c` and `ip_output.c`.
 
+## Glossary (`src/glossary.ts`)
+
+Terms in step texts (AF_INET, MTU, conntrack, NAPI…) get a dotted underline and a tooltip: a one-or-two sentence plain-language definition in both languages plus a "read more" link. Audience is wider than kernel developers, so links go to general explanations, not code: Wikipedia first (Ukrainian article only if it exists, from the English article's langlinks), docs.kernel.org when Wikipedia has nothing precise (sk_buff, NAPI, GRO/GSO, AF_XDP). Kernel function names are not glossary terms; they link to Elixir only from the step header.
+
+- Each term is marked once per step (first occurrence across description and notes); matching is case-sensitive at word boundaries, never inside existing links.
+- Before adding a link, verify it exists and is about exactly that term (redirects to a broader article don't count). Section anchors must exist too.
+
 ## Step model (`Step`)
 
 - `l` — stack layer where the packet currently is (`app | socket | transport | ip | link | nic | wire`)

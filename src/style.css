@@ -107,6 +107,11 @@ a { color: inherit; }
 .note.v7 { background: var(--v7-soft); border-left: 3px solid var(--v7); color: var(--fg); }
 .note.v7 b { color: var(--v7); }
 .note.v7.none { color: var(--muted); border-left-color: var(--line); background: var(--sunk); }
+.term { border-bottom: 1px dotted currentColor; cursor: help; text-decoration: none; }
+.term:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 2px; }
+.tip { position: absolute; z-index: 10; max-width: min(340px, calc(100vw - 16px)); padding: 9px 12px; border-radius: 8px; background: var(--fg); color: var(--bg); font-size: .82rem; line-height: 1.45; box-shadow: 0 6px 20px rgb(0 0 0 / .25); }
+.tip b { font-family: var(--f-mono); font-weight: 600; margin-right: 2px; }
+.tip a { color: inherit; font-weight: 600; white-space: nowrap; }
 .branches { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .br { font-family: var(--f-mono); font-size: .78rem; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--line); color: var(--muted); }
 .br.pick { border-color: var(--ok); color: var(--ok); font-weight: 600; }
