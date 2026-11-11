@@ -50,7 +50,22 @@ curl http://1.1.1.1/</pre>
   </section>
 
   <section class="card">
-    <div class="card-h"><h2><span class="en">1. connect() builds the SYN</span><span class="uk">1. connect() будує SYN</span></h2><span class="eyebrow">pwru --output-stack</span></div>
+    <h2 class="section-h"><span class="en">What happens, in order</span><span class="uk">Що відбувається, по порядку</span></h2>
+    <p class="ex-p"><span class="en">One <code>curl</code> request is a handful of packets between this host and <code>1.1.1.1</code>. Sections 1–6 follow them in order, each looked at from inside the kernel. Click a row to jump to it.</span><span class="uk">Один запит <code>curl</code> — це кілька пакетів між цим хостом і <code>1.1.1.1</code>. Розділи 1–6 йдуть за ними по порядку, кожен — зсередини ядра. Натисни рядок, щоб перейти до розділу.</span></p>
+    <div class="flow">
+      <div class="flow-h"><span></span><span class="ends"><b><span class="en">this host</span><span class="uk">цей хост</span></b><b>1.1.1.1</b></span><span></span></div>
+      <a class="flow-row" href="#s1"><span class="n">1</span><span class="lane"><em>SYN</em><i class="arr r"></i></span><span class="what"><span class="en"><code>connect()</code>: who creates the first packet</span><span class="uk"><code>connect()</code>: хто створює перший пакет</span></span></a>
+      <a class="flow-row" href="#s2"><span class="n">2</span><span class="lane"><em>SYN</em><i class="arr r"></i></span><span class="what"><span class="en">the same SYN on its way down: IP, bridge, network card</span><span class="uk">той самий SYN по дорозі вниз: IP, бридж, мережева карта</span></span></a>
+      <a class="flow-row" href="#s3"><span class="n">3</span><span class="lane"><em>SYN-ACK</em><i class="arr l"></i></span><span class="what"><span class="en">the reply: from the interrupt up to the socket</span><span class="uk">відповідь: від переривання вгору до сокета</span></span></a>
+      <a class="flow-row" href="#s4"><span class="n">4</span><span class="lane"><em>ACK</em><i class="arr r"></i></span><span class="what"><span class="en">the handshake is done; the kernel answers on its own</span><span class="uk">рукостискання завершено; ядро відповідає саме</span></span></a>
+      <a class="flow-row" href="#s5"><span class="n">5</span><span class="lane"><em>GET / · data</em><i class="arr r"></i><i class="arr l"></i></span><span class="what"><span class="en">the HTTP request goes out, the response comes in</span><span class="uk">HTTP-запит виходить, відповідь приходить</span></span></a>
+      <a class="flow-row" href="#s6"><span class="n">6</span><span class="lane"><em>close</em><i class="arr x"></i></span><span class="what"><span class="en"><code>curl</code> exits and the socket is destroyed</span><span class="uk"><code>curl</code> завершується, сокет знищується</span></span></a>
+    </div>
+    <p class="ex-p"><span class="en">Section 7 is not part of this request: it shows ordinary tools (<code>ss</code>, <code>tc</code>, <code>tcpdump</code>…) run on the same host during a longer download.</span><span class="uk">Розділ 7 — не частина цього запиту: там звичайні інструменти (<code>ss</code>, <code>tc</code>, <code>tcpdump</code>…), запущені на тому ж хості під час довшого завантаження.</span></p>
+  </section>
+
+  <section class="card" id="s1">
+    <div class="card-h"><h2><span class="en">1. SYN: who creates it</span><span class="uk">1. SYN: хто його створює</span></h2><span class="eyebrow"><span class="en">call stack</span><span class="uk">стек викликів</span></span></div>
     <pre class="trace">ip_local_out
 ip_queue_xmit
 __tcp_transmit_skb
@@ -66,8 +81,8 @@ entry_SYSCALL_64_after_hwframe</pre>
     <p class="ex-steps"><span class="en">In the simulation:</span><span class="uk">У симуляції:</span> <a href="./#egress-tcp-5"><span class="en">Send 5–7</span><span class="uk">Відправка 5–7</span></a></p>
   </section>
 
-  <section class="card">
-    <div class="card-h"><h2><span class="en">2. The SYN leaves: IP, bridge, NIC</span><span class="uk">2. SYN виходить: IP, бридж, карта</span></h2><span class="eyebrow">pwru --output-caller</span></div>
+  <section class="card" id="s2">
+    <div class="card-h"><h2><span class="en">2. SYN: down through IP, the bridge and the card</span><span class="uk">2. SYN: вниз через IP, бридж і карту</span></h2><span class="eyebrow"><span class="en">functions in order</span><span class="uk">функції по черзі</span></span></div>
     <pre class="trace">       0    60  ip_local_out                       ← __ip_queue_xmit
        0    60  __ip_local_out                     ← ip_local_out
        0    60  nf_hook_slow                       ← __ip_local_out
@@ -111,8 +126,8 @@ entry_SYSCALL_64_after_hwframe</pre>
     </ul>
   </section>
 
-  <section class="card">
-    <div class="card-h"><h2><span class="en">3. The SYN-ACK arrives: interrupt to socket</span><span class="uk">3. Приходить SYN-ACK: від переривання до сокета</span></h2><span class="eyebrow">pwru --output-stack</span></div>
+  <section class="card" id="s3">
+    <div class="card-h"><h2><span class="en">3. SYN-ACK: from the interrupt up to the socket</span><span class="uk">3. SYN-ACK: від переривання вгору до сокета</span></h2><span class="eyebrow"><span class="en">call stack</span><span class="uk">стек викликів</span></span></div>
     <pre class="trace">tcp_v4_rcv
 ip_local_deliver_finish
 ip_local_deliver
@@ -172,8 +187,8 @@ irq_exit_rcu
     </ul>
   </section>
 
-  <section class="card">
-    <div class="card-h"><h2><span class="en">4. The ACK goes out from the softirq</span><span class="uk">4. ACK виходить прямо з softirq</span></h2><span class="eyebrow">pwru --output-stack</span></div>
+  <section class="card" id="s4">
+    <div class="card-h"><h2><span class="en">4. ACK: sent without any system call</span><span class="uk">4. ACK: відправлений без жодного системного виклику</span></h2><span class="eyebrow"><span class="en">call stack</span><span class="uk">стек викликів</span></span></div>
     <pre class="trace">ip_local_out
 ip_queue_xmit
 __tcp_transmit_skb
@@ -185,8 +200,8 @@ tcp_v4_rcv
     <p class="ex-p"><span class="en">The third packet of the handshake has no system call behind it. It is sent while the kernel is still processing the SYN-ACK, inside the same softirq: <code>tcp_rcv_state_process()</code> calls <code>__tcp_send_ack()</code>, and the ACK takes the usual send path from <code>__tcp_transmit_skb()</code> down. Most ACKs during a download are sent like this, from the receive path.</span><span class="uk">За третім пакетом рукостискання немає системного виклику. Він відправляється, поки ядро ще обробляє SYN-ACK, у тому самому softirq: <code>tcp_rcv_state_process()</code> викликає <code>__tcp_send_ack()</code>, і ACK іде звичним шляхом відправки від <code>__tcp_transmit_skb()</code> вниз. Більшість ACK під час завантаження відправляються саме так, зі шляху прийому.</span></p>
   </section>
 
-  <section class="card">
-    <div class="card-h"><h2><span class="en">5. The request and the response data</span><span class="uk">5. Запит і дані відповіді</span></h2><span class="eyebrow">pwru</span></div>
+  <section class="card" id="s5">
+    <div class="card-h"><h2><span class="en">5. The request out, the response data in</span><span class="uk">5. Запит назовні, дані відповіді всередину</span></h2><span class="eyebrow"><span class="en">functions in order</span><span class="uk">функції по черзі</span></span></div>
     <pre class="trace">ip_local_out
 ip_queue_xmit
 __tcp_transmit_skb
@@ -217,15 +232,15 @@ entry_SYSCALL_64_after_hwframe</pre>
     <p class="ex-steps"><span class="en">In the simulation:</span><span class="uk">У симуляції:</span> <a href="./#ingress-tcp-9"><span class="en">Receive 9–10</span><span class="uk">Прийом 9–10</span></a></p>
   </section>
 
-  <section class="card">
-    <div class="card-h"><h2><span class="en">6. Closing: what was left in the queue</span><span class="uk">6. Закриття: що лишилось у черзі</span></h2><span class="eyebrow">pwru</span></div>
+  <section class="card" id="s6">
+    <div class="card-h"><h2><span class="en">6. Close: what was left in the queue</span><span class="uk">6. Закриття: що лишилось у черзі</span></h2><span class="eyebrow"><span class="en">functions in order</span><span class="uk">функції по черзі</span></span></div>
     <pre class="trace">       0     0  sk_skb_reason_drop(SKB_DROP_REASON_QUEUE_PURGE) ← sk_stream_kill_queues
        0     0  sock_rfree                         ← skb_release_head_state</pre>
     <p class="ex-p"><span class="en">The last line of the trace. When the socket is destroyed, <code>sk_stream_kill_queues()</code> empties its receive queue, and every skb still there is freed with the drop reason <code>SKB_DROP_REASON_QUEUE_PURGE</code>. This one carried no data (<code>len</code> 0). <code>sock_rfree()</code> is the destructor of received skbs: it returns the memory to the socket’s accounting. A drop reason in a trace is therefore not always a lost packet; here it is an ordinary close.</span><span class="uk">Останній рядок трасування. Коли сокет знищується, <code>sk_stream_kill_queues()</code> спорожнює його чергу прийому, і кожен skb, що там лишився, звільняється з причиною <code>SKB_DROP_REASON_QUEUE_PURGE</code>. Цей не ніс даних (<code>len</code> 0). <code>sock_rfree()</code> — деструктор прийнятих skb: він повертає пам’ять в облік сокета. Тож причина «drop» у трасуванні не завжди означає втрачений пакет; тут це звичайне закриття.</span></p>
   </section>
 
-  <section class="card">
-    <div class="card-h"><h2><span class="en">7. The same stack, seen with ordinary tools</span><span class="uk">7. Той самий стек звичайними інструментами</span></h2><span class="eyebrow"><span class="en">during a download</span><span class="uk">під час завантаження</span></span></div>
+  <section class="card" id="s7">
+    <div class="card-h"><h2><span class="en">7. Separately: the same host seen with ordinary tools</span><span class="uk">7. Окремо: той самий хост звичайними інструментами</span></h2><span class="eyebrow"><span class="en">during a download</span><span class="uk">під час завантаження</span></span></div>
     <p class="ex-p"><span class="en">These are the commands the simulation suggests at each step, run on the same host while it downloaded a file over HTTPS (the server is <code>172.66.0.218</code>). Output is trimmed to the relevant lines.</span><span class="uk">Це команди, які симуляція пропонує на кожному кроці, запущені на тому самому хості під час завантаження файлу по HTTPS (сервер — <code>172.66.0.218</code>). Вивід скорочено до потрібних рядків.</span></p>
 
     <h3 class="ex-h">ip route get · ip neigh <a href="./#egress-tcp-10"><span class="en">Send 6, 10</span><span class="uk">Відправка 6, 10</span></a></h3>
