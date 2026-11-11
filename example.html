@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>A Packet’s Path: a Live Trace</title>
+  <meta name="description" content="One TCP connection traced through a real Linux 7.0 host with pwru: every kernel function the packets passed, matched to the steps of the simulation.">
+  <meta property="og:title" content="A Packet’s Path: a Live Trace">
+  <meta property="og:description" content="One TCP connection traced through a real Linux host with pwru, matched to the steps of the simulation.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://packetpath.fyi/example.html">
+  <meta property="og:image" content="https://packetpath.fyi/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://packetpath.fyi/og.png">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='9' width='24' height='14' rx='3' fill='%23d96f0b'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+</head>
+<body>
+<div class="wrap ex">
+  <header>
+    <div class="top">
+      <div class="eyebrow"><a href="./"><span class="en">← The simulation</span><span class="uk">← До симуляції</span></a></div>
+      <div class="seg sm" role="group" aria-label="Language">
+        <button data-lang="en" aria-pressed="true">EN</button>
+        <button data-lang="uk" aria-pressed="false">UA</button>
+      </div>
+    </div>
+    <h1><span class="en">A live trace: one TCP connection on a real host</span><span class="uk">Живий приклад: одне TCP-з’єднання на справжньому хості</span></h1>
+    <p class="lede">
+      <span class="en">The simulation describes the path from the kernel source. Here is the same path recorded on a running machine: every kernel function that touched the packets of one <code>curl</code> request, with the matching step of the simulation next to it.</span>
+      <span class="uk">Симуляція описує шлях за кодом ядра. Тут той самий шлях, записаний на живій машині: кожна функція ядра, через яку пройшли пакети одного запиту <code>curl</code>, і відповідний крок симуляції поруч.</span>
+    </p>
+  </header>
+
+  <section class="card">
+    <h2 class="section-h"><span class="en">The setup</span><span class="uk">Що і де</span></h2>
+    <ul class="ex-list">
+      <li><span class="en">A Proxmox VE host, kernel <code>7.0.12-1-pve</code>. The simulation follows 7.3; every function below exists in both.</span><span class="uk">Хост Proxmox VE, ядро <code>7.0.12-1-pve</code>. Симуляція йде за 7.3; усі функції нижче є в обох.</span></li>
+      <li><span class="en">The network card <code>nic0</code> (Intel, driver <code>e1000e</code>) is a port of the Linux bridge <code>vmbr0</code>, and the host’s IP address lives on the bridge. That is how Proxmox is set up by default, so every packet also crosses the bridge, once in each direction.</span><span class="uk">Мережева карта <code>nic0</code> (Intel, драйвер <code>e1000e</code>) — порт Linux-бриджа <code>vmbr0</code>, а IP-адреса хоста висить на бриджі. Так Proxmox налаштований за замовчуванням, тож кожен пакет ще й проходить бридж, по разу в кожен бік.</span></li>
+      <li><span class="en">The tool is <a href="https://github.com/cilium/pwru" target="_blank" rel="noopener">pwru</a> v1.0.12 (“packet, where are you?”): an eBPF program on every kernel function that takes an <code>sk_buff</code>. It prints each call for packets that match a filter.</span><span class="uk">Інструмент — <a href="https://github.com/cilium/pwru" target="_blank" rel="noopener">pwru</a> v1.0.12 («packet, where are you?»): eBPF-програма на кожній функції ядра, що приймає <code>sk_buff</code>. Вона друкує кожен виклик для пакетів, які підходять під фільтр.</span></li>
+      <li><span class="en">Home addresses are replaced: the host is <code>10.0.0.2</code>, the router <code>10.0.0.1</code>, MAC addresses are <code>02:00:00:…</code>.</span><span class="uk">Домашні адреси замінено: хост — <code>10.0.0.2</code>, роутер — <code>10.0.0.1</code>, MAC-адреси — <code>02:00:00:…</code>.</span></li>
+    </ul>
+    <pre class="trace"><span class="cmt"># terminal 1</span>
+pwru --output-caller --timestamp relative "host 1.1.1.1 and tcp port 80"
+<span class="cmt"># terminal 2</span>
+curl http://1.1.1.1/</pre>
+    <p class="ex-p"><span class="en">How to read the excerpts: the first column is the device (<code>name:ifindex</code>, <code>0</code> when <code>skb-&gt;dev</code> is not set), then <code>skb-&gt;len</code>, then the function and who called it. Small helpers (checksum, feature checks, freeing memory) are cut out; nothing is reordered.</span><span class="uk">Як читати витяги: перша колонка — пристрій (<code>ім’я:ifindex</code>, <code>0</code>, коли <code>skb-&gt;dev</code> не задано), далі <code>skb-&gt;len</code>, далі функція і хто її викликав. Дрібні допоміжні функції (контрольні суми, перевірки можливостей, звільнення пам’яті) прибрано; порядок не змінено.</span></p>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h2><span class="en">1. connect() builds the SYN</span><span class="uk">1. connect() будує SYN</span></h2><span class="eyebrow">pwru --output-stack</span></div>
+    <pre class="trace">ip_local_out
+ip_queue_xmit
+__tcp_transmit_skb
+tcp_connect
+tcp_v4_connect
+__inet_stream_connect
+inet_stream_connect
+__sys_connect
+__x64_sys_connect
+do_syscall_64
+entry_SYSCALL_64_after_hwframe</pre>
+    <p class="ex-p"><span class="en">Read from the bottom: <code>curl</code> calls <code>connect()</code>, TCP builds the SYN in <code>tcp_connect()</code> and sends it through the same <code>__tcp_transmit_skb()</code> → <code>ip_queue_xmit()</code> → <code>ip_local_out()</code> as any data segment. Only the entry point differs from the Send scenario, which starts at <code>write()</code>.</span><span class="uk">Читати знизу: <code>curl</code> викликає <code>connect()</code>, TCP будує SYN у <code>tcp_connect()</code> і відправляє його тим самим шляхом <code>__tcp_transmit_skb()</code> → <code>ip_queue_xmit()</code> → <code>ip_local_out()</code>, що й будь-який сегмент з даними. Від сценарію «Відправка», який починається з <code>write()</code>, відрізняється лише точка входу.</span></p>
+    <p class="ex-steps"><span class="en">In the simulation:</span><span class="uk">У симуляції:</span> <a href="./#egress-tcp-5"><span class="en">Send 5–7</span><span class="uk">Відправка 5–7</span></a></p>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h2><span class="en">2. The SYN leaves: IP, bridge, NIC</span><span class="uk">2. SYN виходить: IP, бридж, карта</span></h2><span class="eyebrow">pwru --output-caller</span></div>
+    <pre class="trace">       0    60  ip_local_out                       ← __ip_queue_xmit
+       0    60  __ip_local_out                     ← ip_local_out
+       0    60  nf_hook_slow                       ← __ip_local_out
+       0    60  apparmor_ip_localout               ← nf_hook_slow
+       0    60  ip_output                          ← ip_local_out
+ vmbr0:4    60  nf_hook_slow                       ← ip_output
+ vmbr0:4    60  apparmor_ip_postroute              ← nf_hook_slow
+ vmbr0:4    60  ip_finish_output                   ← ip_output
+ vmbr0:4    60  __ip_finish_output                 ← ip_finish_output
+ vmbr0:4    60  ip_finish_output2                  ← __ip_finish_output
+<mark> vmbr0:4    74  __dev_queue_xmit                   ← ip_finish_output2</mark>
+ vmbr0:4    74  validate_xmit_skb                  ← __dev_queue_xmit
+ vmbr0:4    74  dev_hard_start_xmit                ← __dev_queue_xmit
+ vmbr0:4    74  dev_queue_xmit_nit                 ← dev_hard_start_xmit
+ vmbr0:4    74  skb_clone                          ← dev_queue_xmit_nit
+ vmbr0:4    74  packet_rcv                         ← dev_queue_xmit_nit
+ vmbr0:4    74  sk_skb_reason_drop(SKB_CONSUMED)   ← packet_rcv
+<mark> vmbr0:4    74  br_dev_xmit                        ← dev_hard_start_xmit</mark>
+ vmbr0:4    74  br_nf_dev_xmit                     ← br_dev_xmit
+ vmbr0:4    60  br_allowed_ingress                 ← br_dev_xmit
+ vmbr0:4    60  br_forward                         ← br_dev_xmit
+ vmbr0:4    60  __br_forward                       ← br_forward
+  nic0:2    60  nf_hook_slow                       ← __br_forward
+  nic0:2    60  br_forward_finish                  ← __br_forward
+  nic0:2    60  nf_hook_slow                       ← br_forward_finish
+  nic0:2    60  br_nf_post_routing                 ← nf_hook_slow
+  nic0:2    60  br_dev_queue_push_xmit             ← br_forward_finish
+<mark>  nic0:2    74  __dev_queue_xmit                   ← br_dev_queue_push_xmit</mark>
+  nic0:2    74  sch_direct_xmit                    ← __dev_queue_xmit
+  nic0:2    74  dev_hard_start_xmit                ← sch_direct_xmit
+  nic0:2    74  skb_clone_tx_timestamp             ← e1000_xmit_frame[e1000e]
+  nic0:2    74  dev_kfree_skb_any_reason           ← e1000_put_txbuf[e1000e]
+  nic0:2    74  sk_skb_reason_drop(SKB_CONSUMED)   ← dev_kfree_skb_any_reason</pre>
+    <ul class="ex-list">
+      <li><span class="en"><b>Netfilter.</b> <code>nf_hook_slow()</code> is how a hook with registered callbacks runs: first <code>NF_INET_LOCAL_OUT</code> in <code>__ip_local_out()</code>, then <code>NF_INET_POST_ROUTING</code> in <code>ip_output()</code>. The callbacks seen here are AppArmor’s, which Proxmox enables.</span><span class="uk"><b>Netfilter.</b> <code>nf_hook_slow()</code> — так виконується хук, на якому є зареєстровані обробники: спершу <code>NF_INET_LOCAL_OUT</code> у <code>__ip_local_out()</code>, потім <code>NF_INET_POST_ROUTING</code> в <code>ip_output()</code>. Тут видно обробники AppArmor, який Proxmox вмикає.</span> <a href="./#egress-tcp-7"><span class="en">Send 7–8</span><span class="uk">Відправка 7–8</span></a></li>
+      <li><span class="en"><b>60 → 74.</b> In <code>ip_finish_output2()</code> the neighbour entry of the router prepends the 14-byte Ethernet header: <code>skb-&gt;len</code> grows by exactly that much.</span><span class="uk"><b>60 → 74.</b> В <code>ip_finish_output2()</code> запис сусіда (роутера) додає спереду 14-байтний Ethernet-заголовок: <code>skb-&gt;len</code> росте рівно на стільки.</span> <a href="./#egress-tcp-10"><span class="en">Send 10</span><span class="uk">Відправка 10</span></a></li>
+      <li><span class="en"><b>The first device is the bridge.</b> <code>vmbr0</code> has no qdisc (<code>noqueue</code>), so <code>__dev_queue_xmit()</code> calls <code>dev_hard_start_xmit()</code> right away. <code>dev_queue_xmit_nit()</code> hands a clone to an <code>AF_PACKET</code> socket open on the host; its filter did not want this frame, so the clone is freed with <code>SKB_CONSUMED</code>, which is not a drop.</span><span class="uk"><b>Перший пристрій — бридж.</b> На <code>vmbr0</code> немає qdisc (<code>noqueue</code>), тож <code>__dev_queue_xmit()</code> одразу викликає <code>dev_hard_start_xmit()</code>. <code>dev_queue_xmit_nit()</code> віддає клон сокету <code>AF_PACKET</code>, відкритому на хості; його фільтру цей кадр не потрібен, тож клон звільняється з <code>SKB_CONSUMED</code>, а це не втрата.</span> <a href="./#egress-tcp-11"><span class="en">Send 11</span><span class="uk">Відправка 11</span></a></li>
+      <li><span class="en"><b>Through the bridge.</b> <code>br_dev_xmit()</code> is the bridge’s transmit function. It pulls the Ethernet header off (74 → 60), looks up the destination MAC in the forwarding database and sends the frame to the port <code>nic0</code>. The <code>br_nf_*</code> functions are <code>br_netfilter</code>, which passes bridged frames to the IP-level netfilter hooks. It is active on this host, but <code>net.bridge.bridge-nf-call-iptables</code> is 0, so they let the frame through without running IP rules. <code>br_dev_queue_push_xmit()</code> pushes the header back (60 → 74) and calls <code>dev_queue_xmit()</code> a second time, now for <code>nic0</code>.</span><span class="uk"><b>Через бридж.</b> <code>br_dev_xmit()</code> — функція відправки бриджа. Вона знімає Ethernet-заголовок (74 → 60), шукає MAC отримувача в таблиці пересилання і відправляє кадр на порт <code>nic0</code>. Функції <code>br_nf_*</code> — це <code>br_netfilter</code>, який передає кадри з бриджа в IP-хуки netfilter. На цьому хості він активний, але <code>net.bridge.bridge-nf-call-iptables</code> дорівнює 0, тож вони пропускають кадр, не виконуючи IP-правил. <code>br_dev_queue_push_xmit()</code> повертає заголовок (60 → 74) і вдруге викликає <code>dev_queue_xmit()</code>, тепер для <code>nic0</code>.</span> <a href="./#bridge-tcp-7"><span class="en">Bridge 7–8</span><span class="uk">Бридж 7–8</span></a></li>
+      <li><span class="en"><b>qdisc bypass.</b> <code>nic0</code> has <code>fq_codel</code>. Its queue was empty and <code>fq_codel</code> allows bypass (<code>TCQ_F_CAN_BYPASS</code>), so there is no enqueue: <code>sch_direct_xmit()</code> hands the skb straight to the driver, <code>e1000_xmit_frame()</code>.</span><span class="uk"><b>Обхід qdisc.</b> На <code>nic0</code> стоїть <code>fq_codel</code>. Черга була порожня, а <code>fq_codel</code> дозволяє обхід (<code>TCQ_F_CAN_BYPASS</code>), тож постановки в чергу немає: <code>sch_direct_xmit()</code> віддає skb одразу драйверу, <code>e1000_xmit_frame()</code>.</span> <a href="./#egress-tcp-12"><span class="en">Send 12</span><span class="uk">Відправка 12</span></a></li>
+      <li><span class="en"><b>The end of a sent packet.</b> After the card has sent the frame, the driver frees the skb in <code>e1000_put_txbuf()</code>, again with <code>SKB_CONSUMED</code>.</span><span class="uk"><b>Кінець відправленого пакета.</b> Коли карта відправила кадр, драйвер звільняє skb в <code>e1000_put_txbuf()</code>, знову з <code>SKB_CONSUMED</code>.</span> <a href="./#egress-tcp-13"><span class="en">Send 13</span><span class="uk">Відправка 13</span></a></li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h2><span class="en">3. The SYN-ACK arrives: interrupt to socket</span><span class="uk">3. Приходить SYN-ACK: від переривання до сокета</span></h2><span class="eyebrow">pwru --output-stack</span></div>
+    <pre class="trace">tcp_v4_rcv
+ip_local_deliver_finish
+ip_local_deliver
+ip_rcv
+__netif_receive_skb_one_core
+__netif_receive_skb
+netif_receive_skb
+<mark>br_pass_frame_up</mark>
+br_handle_frame_finish
+<mark>br_handle_frame</mark>
+__netif_receive_skb_core
+__netif_receive_skb_list_core
+netif_receive_skb_list_internal
+napi_complete_done
+<mark>e1000e_poll</mark>
+__napi_poll
+<mark>net_rx_action</mark>
+handle_softirqs
+__irq_exit_rcu
+irq_exit_rcu
+<mark>common_interrupt</mark></pre>
+    <p class="ex-p"><span class="en">Again from the bottom. The card raised an interrupt; on the way out of it the kernel runs the network softirq, <code>net_rx_action()</code>, which calls the driver’s NAPI poll, <code>e1000e_poll()</code>. When the poll is done, GRO hands over its batch, and <code>__netif_receive_skb_core()</code> processes the frame on <code>nic0</code>. <code>nic0</code> is a bridge port, so its <code>rx_handler</code> is <code>br_handle_frame()</code>. The frame is addressed to the bridge itself, so <code>br_pass_frame_up()</code> passes it up: <code>netif_receive_skb()</code> runs a second time, now on <code>vmbr0</code>, and from there it is the usual <code>ip_rcv()</code> → <code>ip_local_deliver()</code> → <code>tcp_v4_rcv()</code>. All of it in one softirq, with no process involved.</span><span class="uk">Знову знизу. Карта підняла переривання; на виході з нього ядро запускає мережевий softirq, <code>net_rx_action()</code>, а той — NAPI-опитування драйвера, <code>e1000e_poll()</code>. Коли опитування закінчено, GRO віддає свою пачку, і <code>__netif_receive_skb_core()</code> обробляє кадр на <code>nic0</code>. <code>nic0</code> — порт бриджа, тож його <code>rx_handler</code> — <code>br_handle_frame()</code>. Кадр адресовано самому бриджу, тому <code>br_pass_frame_up()</code> передає його вгору: <code>netif_receive_skb()</code> виконується вдруге, тепер на <code>vmbr0</code>, а далі звичний <code>ip_rcv()</code> → <code>ip_local_deliver()</code> → <code>tcp_v4_rcv()</code>. Усе в одному softirq, без жодного процесу.</span></p>
+    <p class="ex-steps"><span class="en">In the simulation:</span><span class="uk">У симуляції:</span> <a href="./#ingress-tcp-3"><span class="en">Receive 3–8</span><span class="uk">Прийом 3–8</span></a> · <a href="./#bridge-tcp-5"><span class="en">Bridge 5–6 (the rx_handler branch)</span><span class="uk">Бридж 5–6 (гілка rx_handler)</span></a></p>
+    <pre class="trace">  nic0:2    60  br_nf_pre_routing                  ← br_handle_frame
+  nic0:2    60  br_handle_frame_finish             ← br_handle_frame
+  nic0:2    60  br_pass_frame_up                   ← br_handle_frame_finish
+ vmbr0:4    60  nf_hook_slow                       ← br_pass_frame_up
+ vmbr0:4    60  br_nf_local_in                     ← nf_hook_slow
+ vmbr0:4    60  netif_receive_skb                  ← br_pass_frame_up
+ vmbr0:4    60  __netif_receive_skb                ← netif_receive_skb
+ vmbr0:4    60  deliver_skb                        ← __netif_receive_skb_core
+ vmbr0:4    60  packet_rcv                         ← deliver_skb
+ vmbr0:4    60  ip_rcv                             ← __netif_receive_skb_one_core
+ vmbr0:4    60  ip_rcv_core                        ← ip_rcv
+ vmbr0:4    60  nf_hook_slow                       ← ip_rcv
+ vmbr0:4    60  ip_sabotage_in                     ← nf_hook_slow
+ vmbr0:4    60  ip_rcv_finish_core                 ← ip_rcv
+<mark> vmbr0:4    60  tcp_v4_early_demux                 ← ip_rcv_finish_core
+ vmbr0:4    60  ip_route_input_noref               ← ip_rcv_finish_core
+ vmbr0:4    60  ip_route_input_slow                ← ip_route_input_noref</mark>
+ vmbr0:4    60  ip_local_deliver                   ← ip_rcv
+ vmbr0:4    60  nf_hook_slow                       ← ip_local_deliver
+ vmbr0:4    60  ip_local_deliver_finish            ← ip_local_deliver
+<mark> vmbr0:4    40  ip_protocol_deliver_rcu            ← ip_local_deliver_finish</mark>
+ vmbr0:4    40  raw_local_deliver                  ← ip_protocol_deliver_rcu
+ vmbr0:4    40  tcp_v4_rcv                         ← ip_protocol_deliver_rcu
+       0    40  tcp_v4_do_rcv                      ← tcp_v4_rcv
+       0    40  tcp_rcv_state_process              ← tcp_v4_do_rcv
+<mark>       0    40  tcp_finish_connect                 ← tcp_rcv_state_process</mark>
+       0    40  tcp_init_transfer                  ← tcp_finish_connect</pre>
+    <ul class="ex-list">
+      <li><span class="en"><b>One frame, two devices.</b> The device column switches from <code>nic0</code> to <code>vmbr0</code> in <code>br_pass_frame_up()</code>. <code>packet_rcv()</code> appears again because <code>vmbr0</code> has an <code>AF_PACKET</code> listener, as on the way out.</span><span class="uk"><b>Один кадр, два пристрої.</b> Колонка пристрою змінюється з <code>nic0</code> на <code>vmbr0</code> у <code>br_pass_frame_up()</code>. <code>packet_rcv()</code> знову видно, бо на <code>vmbr0</code> є слухач <code>AF_PACKET</code>, як і на виході.</span></li>
+      <li><span class="en"><b><code>ip_sabotage_in()</code></b> is <code>br_netfilter</code>’s first <code>NF_INET_PRE_ROUTING</code> callback. When the bridge has already run the IPv4 <code>PRE_ROUTING</code> hooks for a frame (with <code>bridge-nf-call-iptables</code> on), it stops them from running a second time. Here that setting is off, so it just accepts the packet.</span><span class="uk"><b><code>ip_sabotage_in()</code></b> — перший обробник <code>NF_INET_PRE_ROUTING</code> від <code>br_netfilter</code>. Коли бридж уже виконав для кадру хуки IPv4 <code>PRE_ROUTING</code> (з увімкненим <code>bridge-nf-call-iptables</code>), він не дає їм виконатися вдруге. Тут це налаштування вимкнене, тож він просто приймає пакет.</span></li>
+      <li><span class="en"><b>Route lookup only for the first packet.</b> <code>tcp_v4_early_demux()</code> finds the socket already in <code>ip_rcv_finish_core()</code>, but the socket has no cached input route yet (<code>sk_rx_dst</code>), so the kernel does a full lookup in <code>ip_route_input_slow()</code>. <code>tcp_finish_connect()</code> then stores the route in the socket. Later packets of this connection skip the lookup entirely, see section 5.</span><span class="uk"><b>Пошук маршруту лише для першого пакета.</b> <code>tcp_v4_early_demux()</code> знаходить сокет ще в <code>ip_rcv_finish_core()</code>, але в сокета ще немає збереженого вхідного маршруту (<code>sk_rx_dst</code>), тож ядро робить повний пошук в <code>ip_route_input_slow()</code>. Потім <code>tcp_finish_connect()</code> зберігає маршрут у сокеті. Наступні пакети цього з’єднання пошук пропускають повністю, див. розділ 5.</span> <a href="./#ingress-tcp-6"><span class="en">Receive 6</span><span class="uk">Прийом 6</span></a></li>
+      <li><span class="en"><b>60 → 40.</b> <code>ip_local_deliver_finish()</code> pulls the 20-byte IP header off before handing the packet to TCP. From <code>tcp_v4_do_rcv()</code> on the device column shows <code>0</code>: <code>tcp_v4_rcv()</code> sets <code>skb-&gt;dev = NULL</code> before the socket processes the packet.</span><span class="uk"><b>60 → 40.</b> <code>ip_local_deliver_finish()</code> знімає 20-байтний IP-заголовок перед тим, як віддати пакет TCP. Починаючи з <code>tcp_v4_do_rcv()</code> колонка пристрою показує <code>0</code>: <code>tcp_v4_rcv()</code> ставить <code>skb-&gt;dev = NULL</code> до того, як сокет обробить пакет.</span> <a href="./#ingress-tcp-7"><span class="en">Receive 7–8</span><span class="uk">Прийом 7–8</span></a></li>
+      <li><span class="en"><b>SYN_SENT → ESTABLISHED.</b> The socket is still connecting, so the packet goes to <code>tcp_rcv_state_process()</code> rather than the established fast path, and <code>tcp_finish_connect()</code> completes the handshake.</span><span class="uk"><b>SYN_SENT → ESTABLISHED.</b> Сокет ще з’єднується, тож пакет іде в <code>tcp_rcv_state_process()</code>, а не у швидкий шлях встановленого з’єднання, і <code>tcp_finish_connect()</code> завершує рукостискання.</span> <a href="./#ingress-tcp-9"><span class="en">Receive 9</span><span class="uk">Прийом 9</span></a></li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h2><span class="en">4. The ACK goes out from the softirq</span><span class="uk">4. ACK виходить прямо з softirq</span></h2><span class="eyebrow">pwru --output-stack</span></div>
+    <pre class="trace">ip_local_out
+ip_queue_xmit
+__tcp_transmit_skb
+__tcp_send_ack
+tcp_rcv_state_process
+tcp_v4_do_rcv
+tcp_v4_rcv
+<span class="cmt">…</span> <span class="cmt en">the same receive stack as in section 3, down to common_interrupt</span><span class="cmt uk">той самий стек прийому, що в розділі 3, до common_interrupt</span></pre>
+    <p class="ex-p"><span class="en">The third packet of the handshake has no system call behind it. It is sent while the kernel is still processing the SYN-ACK, inside the same softirq: <code>tcp_rcv_state_process()</code> calls <code>__tcp_send_ack()</code>, and the ACK takes the usual send path from <code>__tcp_transmit_skb()</code> down. Most ACKs during a download are sent like this, from the receive path.</span><span class="uk">За третім пакетом рукостискання немає системного виклику. Він відправляється, поки ядро ще обробляє SYN-ACK, у тому самому softirq: <code>tcp_rcv_state_process()</code> викликає <code>__tcp_send_ack()</code>, і ACK іде звичним шляхом відправки від <code>__tcp_transmit_skb()</code> вниз. Більшість ACK під час завантаження відправляються саме так, зі шляху прийому.</span></p>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h2><span class="en">5. The request and the response data</span><span class="uk">5. Запит і дані відповіді</span></h2><span class="eyebrow">pwru</span></div>
+    <pre class="trace">ip_local_out
+ip_queue_xmit
+__tcp_transmit_skb
+tcp_write_xmit
+__tcp_push_pending_frames
+tcp_push
+tcp_sendmsg_locked
+tcp_sendmsg
+inet_sendmsg
+__sys_sendto
+__x64_sys_sendto
+do_syscall_64
+entry_SYSCALL_64_after_hwframe</pre>
+    <p class="ex-p"><span class="en">The HTTP request. <code>curl</code> uses <code>send()</code> (on x86-64 it is the <code>sendto</code> system call) rather than <code>write()</code>, but from <code>inet_sendmsg()</code> on it is the Send scenario as written: the data is copied into the socket write queue in <code>tcp_sendmsg_locked()</code>, and <code>tcp_push()</code> → <code>tcp_write_xmit()</code> sends it.</span><span class="uk">HTTP-запит. <code>curl</code> використовує <code>send()</code> (на x86-64 це системний виклик <code>sendto</code>), а не <code>write()</code>, але від <code>inet_sendmsg()</code> далі це сценарій «Відправка» як він є: дані копіюються в чергу запису сокета в <code>tcp_sendmsg_locked()</code>, а <code>tcp_push()</code> → <code>tcp_write_xmit()</code> їх відправляє.</span></p>
+    <p class="ex-steps"><span class="en">In the simulation:</span><span class="uk">У симуляції:</span> <a href="./#egress-tcp-2"><span class="en">Send 2–5</span><span class="uk">Відправка 2–5</span></a></p>
+    <pre class="trace"> vmbr0:4   438  ip_rcv_finish_core                 ← ip_rcv
+<mark> vmbr0:4   438  tcp_v4_early_demux                 ← ip_rcv_finish_core
+ vmbr0:4   438  ip_local_deliver                   ← ip_rcv</mark>
+ vmbr0:4   438  ip_local_deliver_finish            ← ip_local_deliver
+ vmbr0:4   418  ip_protocol_deliver_rcu            ← ip_local_deliver_finish
+ vmbr0:4   418  tcp_v4_rcv                         ← ip_protocol_deliver_rcu
+       0   418  tcp_v4_do_rcv                      ← tcp_v4_rcv
+<mark>       0   418  tcp_rcv_established                ← tcp_v4_do_rcv</mark>
+       0   418  tcp_data_queue                     ← tcp_rcv_established
+<mark>       0   386  tcp_queue_rcv                      ← tcp_data_queue</mark>
+       0   386  tcp_event_data_recv                ← tcp_data_queue</pre>
+    <p class="ex-p"><span class="en">A packet of the response (the part before <code>ip_rcv_finish_core()</code> is the same as in section 3). Compare with the SYN-ACK: after <code>tcp_v4_early_demux()</code> comes <code>ip_local_deliver()</code> directly. There is no <code>ip_route_input_*</code>, because the route cached in the socket was used. The connection is established, so TCP goes through <code>tcp_rcv_established()</code>. <code>tcp_data_queue()</code> pulls the 32-byte TCP header (20 bytes plus the timestamp option; 418 → 386) and <code>tcp_queue_rcv()</code> puts the payload on the socket receive queue, where it waits for <code>curl</code> to read it.</span><span class="uk">Пакет відповіді (до <code>ip_rcv_finish_core()</code> усе як у розділі 3). Порівняйте з SYN-ACK: після <code>tcp_v4_early_demux()</code> одразу йде <code>ip_local_deliver()</code>. <code>ip_route_input_*</code> немає, бо використано маршрут, збережений у сокеті. З’єднання встановлене, тож TCP іде через <code>tcp_rcv_established()</code>. <code>tcp_data_queue()</code> знімає 32-байтний TCP-заголовок (20 байтів плюс опція timestamp; 418 → 386), а <code>tcp_queue_rcv()</code> кладе дані в чергу прийому сокета, де вони чекають, поки <code>curl</code> їх прочитає.</span></p>
+    <p class="ex-steps"><span class="en">In the simulation:</span><span class="uk">У симуляції:</span> <a href="./#ingress-tcp-9"><span class="en">Receive 9–10</span><span class="uk">Прийом 9–10</span></a></p>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h2><span class="en">6. Closing: what was left in the queue</span><span class="uk">6. Закриття: що лишилось у черзі</span></h2><span class="eyebrow">pwru</span></div>
+    <pre class="trace">       0     0  sk_skb_reason_drop(SKB_DROP_REASON_QUEUE_PURGE) ← sk_stream_kill_queues
+       0     0  sock_rfree                         ← skb_release_head_state</pre>
+    <p class="ex-p"><span class="en">The last line of the trace. When the socket is destroyed, <code>sk_stream_kill_queues()</code> empties its receive queue, and every skb still there is freed with the drop reason <code>SKB_DROP_REASON_QUEUE_PURGE</code>. This one carried no data (<code>len</code> 0). <code>sock_rfree()</code> is the destructor of received skbs: it returns the memory to the socket’s accounting. A drop reason in a trace is therefore not always a lost packet; here it is an ordinary close.</span><span class="uk">Останній рядок трасування. Коли сокет знищується, <code>sk_stream_kill_queues()</code> спорожнює його чергу прийому, і кожен skb, що там лишився, звільняється з причиною <code>SKB_DROP_REASON_QUEUE_PURGE</code>. Цей не ніс даних (<code>len</code> 0). <code>sock_rfree()</code> — деструктор прийнятих skb: він повертає пам’ять в облік сокета. Тож причина «drop» у трасуванні не завжди означає втрачений пакет; тут це звичайне закриття.</span></p>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h2><span class="en">7. The same stack, seen with ordinary tools</span><span class="uk">7. Той самий стек звичайними інструментами</span></h2><span class="eyebrow"><span class="en">during a download</span><span class="uk">під час завантаження</span></span></div>
+    <p class="ex-p"><span class="en">These are the commands the simulation suggests at each step, run on the same host while it downloaded a file over HTTPS (the server is <code>172.66.0.218</code>). Output is trimmed to the relevant lines.</span><span class="uk">Це команди, які симуляція пропонує на кожному кроці, запущені на тому самому хості під час завантаження файлу по HTTPS (сервер — <code>172.66.0.218</code>). Вивід скорочено до потрібних рядків.</span></p>
+
+    <h3 class="ex-h">ip route get · ip neigh <a href="./#egress-tcp-10"><span class="en">Send 6, 10</span><span class="uk">Відправка 6, 10</span></a></h3>
+    <pre class="trace">$ ip route get 172.66.0.218
+172.66.0.218 via 10.0.0.1 dev vmbr0 src 10.0.0.2 uid 0
+$ ip neigh show 10.0.0.1
+10.0.0.1 dev vmbr0 lladdr 02:00:00:00:00:01 <mark>DELAY</mark></pre>
+    <p class="ex-p"><span class="en">The route goes through the router on <code>vmbr0</code>, not <code>nic0</code>: the bridge holds the IP address. The router’s neighbour entry is in <code>DELAY</code>: it had gone <code>STALE</code>, a packet was just sent through it, and the kernel now waits up to <code>delay_first_probe_time</code> (5 seconds here) for a confirmation that the router is reachable before it sends ARP probes.</span><span class="uk">Маршрут іде через роутер на <code>vmbr0</code>, а не <code>nic0</code>: IP-адреса на бриджі. Запис сусіда-роутера в стані <code>DELAY</code>: він був <code>STALE</code>, через нього щойно відправили пакет, і ядро тепер до <code>delay_first_probe_time</code> (тут 5 секунд) чекає підтвердження, що роутер досяжний, перш ніж слати ARP-запити.</span></p>
+
+    <h3 class="ex-h">ss -tmi <a href="./#ingress-tcp-10"><span class="en">Receive 9–10</span><span class="uk">Прийом 9–10</span></a></h3>
+    <pre class="trace">State Recv-Q Send-Q Local Address:Port  Peer Address:Port
+ESTAB <mark>67708</mark>  0      10.0.0.2:49120 172.66.0.218:https
+  skmem:(<mark>r94848,rb131072</mark>,t0,tb46080,f3456,w0,o0,bl0,d2) cubic wscale:13,10 rtt:14.523/9.121
+  mss:1388 pmtu:1500 rcvmss:1440 advmss:1448 cwnd:10 … rcv_wnd:23552</pre>
+    <p class="ex-p"><span class="en"><code>Recv-Q</code> is data in the socket receive queue that <code>curl</code> has not read yet: 67 KB delivered by <code>tcp_queue_rcv()</code> and waiting for <code>read()</code>. <code>skmem</code> shows the memory behind it: <code>r</code> is the receive memory in use, <code>rb</code> the limit (<code>sk_rcvbuf</code>), <code>d</code> the packets the socket dropped.</span><span class="uk"><code>Recv-Q</code> — дані в черзі прийому сокета, які <code>curl</code> ще не прочитав: 67 КБ, які поклав <code>tcp_queue_rcv()</code> і які чекають на <code>read()</code>. <code>skmem</code> показує пам’ять за ними: <code>r</code> — зайнята пам’ять прийому, <code>rb</code> — ліміт (<code>sk_rcvbuf</code>), <code>d</code> — пакети, які сокет відкинув.</span></p>
+
+    <h3 class="ex-h">tc -s qdisc <a href="./#egress-tcp-12"><span class="en">Send 12</span><span class="uk">Відправка 12</span></a></h3>
+    <pre class="trace">qdisc fq_codel 0: root refcnt 2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64
+ Sent 261828748172 bytes 303231108 pkt (dropped 0, overlimits 0 requeues 13109)
+ backlog 0b 0p requeues 13109</pre>
+    <p class="ex-p"><span class="en">The qdisc that the SYN bypassed. <code>backlog 0b 0p</code>: nothing waits in it, which is why bypass is the common case on a lightly loaded uplink. <code>requeues</code> counts the times the driver could not take a packet and it went back to the queue.</span><span class="uk">Та сама qdisc, яку SYN обійшов. <code>backlog 0b 0p</code>: у ній нічого не чекає, тому на мало завантаженому каналі обхід — звичайна справа. <code>requeues</code> — скільки разів драйвер не зміг узяти пакет і той повертався в чергу.</span></p>
+
+    <h3 class="ex-h">tcpdump -e <a href="./#ingress-tcp-1"><span class="en">Receive 1</span><span class="uk">Прийом 1</span></a> · <a href="./#egress-tcp-14"><span class="en">Send 14</span><span class="uk">Відправка 14</span></a></h3>
+    <pre class="trace">02:00:00:00:00:01 &gt; 02:00:00:00:00:02, ethertype IPv4 (0x0800), length 1506: 172.66.0.218.443 &gt; 10.0.0.2.49120: Flags [.], seq 502524510:502525950, ack 3776738090, win 16, options [nop,nop,TS val 3954928449 ecr 2048667830], length 1440
+02:00:00:00:00:02 &gt; 02:00:00:00:00:01, ethertype IPv4 (0x0800), length 66: 10.0.0.2.49120 &gt; 172.66.0.218.443: Flags [.], ack 1440, win 2, options [nop,nop,TS val 2048667871 ecr 3954928420], length 0</pre>
+    <p class="ex-p"><span class="en">One data frame in and one ACK out, captured on <code>nic0</code>. 1506 = 14 (Ethernet) + 20 (IP) + 32 (TCP with timestamps) + 1440 bytes of data; the ACK is 66 = 14 + 20 + 32. The capture itself is the <code>AF_PACKET</code> tap from sections 2 and 3: <code>tcpdump</code> gets its copies through <code>dev_queue_xmit_nit()</code> and <code>deliver_skb()</code>.</span><span class="uk">Один кадр з даними вхідний і один ACK вихідний, знято на <code>nic0</code>. 1506 = 14 (Ethernet) + 20 (IP) + 32 (TCP з timestamps) + 1440 байтів даних; ACK — 66 = 14 + 20 + 32. Сам запис — це той самий відвід <code>AF_PACKET</code> з розділів 2 і 3: <code>tcpdump</code> отримує копії через <code>dev_queue_xmit_nit()</code> і <code>deliver_skb()</code>.</span></p>
+
+    <h3 class="ex-h">/proc/interrupts · /proc/net/softnet_stat <a href="./#ingress-tcp-3"><span class="en">Receive 3</span><span class="uk">Прийом 3</span></a></h3>
+    <pre class="trace">$ grep nic0 /proc/interrupts
+ 124:  354817914          0          0          0          0          0 IR-PCI-MSI  0-edge  nic0
+$ head -2 /proc/net/softnet_stat
+30533ca3 00000000 00000007 00000000 …
+0daa289e 00000000 00000001 00000000 …</pre>
+    <p class="ex-p"><span class="en">The card has one interrupt line, and all of its 354 million interrupts landed on CPU 0. Each starts the NAPI poll seen in section 3. In <code>softnet_stat</code> each line is a CPU and the values are hex: packets processed, packets dropped because the backlog queue was full (0 here), and “time squeeze”: the times <code>net_rx_action()</code> stopped because it ran out of its packet budget or time (7 on CPU 0).</span><span class="uk">У карти одна лінія переривань, і всі її 354 мільйони переривань прийшли на CPU 0. Кожне запускає NAPI-опитування з розділу 3. У <code>softnet_stat</code> кожен рядок — це CPU, значення шістнадцяткові: оброблені пакети, пакети, відкинуті через переповнену чергу backlog (тут 0), і «time squeeze»: скільки разів <code>net_rx_action()</code> зупинявся, бо вичерпав бюджет пакетів або час (7 на CPU 0).</span></p>
+  </section>
+
+  <footer class="foot"><a href="https://github.com/antondemidov" target="_blank" rel="noopener">github.com/antondemidov</a></footer>
+</div>
+<script type="module" src="/src/example.ts"></script>
+</body>
+</html>

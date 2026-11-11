@@ -22,6 +22,7 @@ export const UI = {
     en: "Checked against the <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">Linux {ver} source</a>. Where the kernel makes a decision, pick another outcome to see where the packet goes.",
     uk: "Звірено з <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">кодом Linux {ver}</a>. Там, де ядро ухвалює рішення, обери інший варіант і подивись, куди піде пакет.",
   },
+  exampleLink: { en: "Live example: one TCP connection traced on a real host →", uk: "Живий приклад: одне TCP-з’єднання, відстежене на справжньому хості →" },
   direction: { en: "Direction", uk: "Напрям" },
   protocol: { en: "Protocol", uk: "Протокол" },
   kernel: { en: "Kernel version", uk: "Версія ядра" },

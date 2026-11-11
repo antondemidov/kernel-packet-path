@@ -191,3 +191,19 @@ a { color: inherit; }
 .steps button.chg { border-left: 3px solid var(--v7); }
 .foot { font-size: .8rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; }
 .foot a { color: var(--muted); }
+
+/* Live-trace page (example.html): both languages are in the markup, the <html lang> picks one */
+html[lang="uk"] .en, html:not([lang="uk"]) .uk { display: none; }
+.ex .card { display: flex; flex-direction: column; gap: 10px; }
+.ex .card-h { margin-bottom: 0; }
+.ex .eyebrow a { color: var(--accent); text-decoration: none; }
+.ex-p { margin: 0; max-width: 80ch; }
+.ex-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; max-width: 80ch; }
+.ex-list a, .ex-steps a, .ex-h a { color: var(--accent); font-size: .85rem; white-space: nowrap; }
+.ex-steps { margin: 0; font-size: .85rem; color: var(--muted); }
+.ex-h { font-family: var(--f-mono); font-size: .9rem; font-weight: 600; margin: 8px 0 0; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.ex p code, .ex li code { background: var(--sunk); padding: 0 4px; border-radius: 4px; }
+.trace { margin: 0; background: var(--sunk); border-radius: 8px; padding: 10px 12px; font-family: var(--f-mono); font-size: .78rem; line-height: 1.5; overflow-x: auto; white-space: pre; }
+.trace mark { background: var(--accent-soft); color: inherit; border-radius: 3px; }
+.trace .cmt { color: var(--muted); }
+.sources a.example-link { color: var(--accent); text-decoration-color: currentColor; }

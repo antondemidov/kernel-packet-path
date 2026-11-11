@@ -14,6 +14,10 @@ URL hash: `#<mode>-<proto>-<step>[-v5]`, e.g. `#ingress-udp-8-v5` for 5.10 (old 
 
 UI: no autoplay (removed on purpose: steps are too dense to read on a timer). Navigation is ← →, the step list, and the SVG path map (x = step, y = stack layer, diamonds = netfilter hooks, blue dots = changed in 7.x). Every `name()` in a step's `fn` links to its Elixir definition for the selected kernel. Paper and kernel-source links live in the header; the footer only links to github.com/antondemidov.
 
+## Live example page
+
+`example.html` (+ `src/example.ts`, a second Vite input) shows a real pwru trace of one `curl` TCP connection on a Proxmox host (kernel 7.0), with explanations and links to the matching steps. Text is inline in both languages (`<span class="en">` / `<span class="uk">`), the `<html lang>` picks one. Addresses are replaced with placeholders (10.0.0.x, 02:00:00:…); never publish the real ones. `scripts/example.test.ts` checks both languages and the step links.
+
 ## Sources and accuracy rules
 
 - Basis: A. Stephan, L. Wüstrich, "The Path of a Packet Through the Linux Kernel", TUM, 2024 (NET-2024-04-1_16).
