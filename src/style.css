@@ -49,10 +49,10 @@ a { color: inherit; }
 
 /* Path map */
 .map { overflow-x: auto; }
-.map svg { display: block; width: 100%; height: auto; font-family: var(--f-mono); }
+.map svg { display: block; font-family: var(--f-mono); }
 .map .row { stroke: var(--line); stroke-width: 1; }
 .map .bnd { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 4; opacity: .5; }
-.map .rl { fill: var(--muted); font-size: 10px; text-anchor: end; }
+.map .rl { fill: var(--muted); font-size: 12px; text-anchor: end; }
 .map .rl.off { opacity: .4; }
 .map .rest { fill: none; stroke: var(--line); stroke-width: 2.5; stroke-linejoin: round; }
 .map .untaken { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 3 4; opacity: .5; }
@@ -68,7 +68,7 @@ a { color: inherit; }
 .map .pt.cur .mk { fill: var(--accent); stroke: var(--surface); stroke-width: 3; }
 .map .pt.hook .mk { stroke: var(--hook); }
 .map .pt.hook.past .mk, .map .pt.hook.cur .mk { fill: var(--hook); }
-.map .hl { fill: var(--hook); font-size: 9px; font-weight: 600; text-anchor: middle; }
+.map .hl { fill: var(--hook); font-size: 11px; font-weight: 600; text-anchor: middle; }
 .map .v7dot { fill: var(--v7); }
 
 /* Main grid */

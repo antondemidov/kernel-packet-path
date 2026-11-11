@@ -217,9 +217,11 @@ const fnOf = (s: Step) => (k5() && s.k510?.fn) || s.fn;
 /* Path map: x = step, y = stack layer. Shows the whole route at once; click a point to jump to it. */
 function renderMap() {
   const n = steps.length;
-  // Short paths spread their steps out instead of being scaled up, so labels keep the same size
-  const LX = 64, RH = 24, TOP = 22, SW = Math.max(50, Math.floor((900 - LX - 6) / n));
-  const W = LX + n * SW + 6, H = TOP + LAYER_ORDER.length * RH + 4;
+  // Drawn at 1:1 to the container's width (steps spread out, nothing is scaled), so text and dots match the rest of
+  // the page; on a narrow screen it keeps a minimum step width and scrolls sideways
+  const map = $("map");
+  const LX = 72, RH = 30, TOP = 26, SW = Math.max(36, Math.floor(((map.clientWidth || 900) - LX - 8) / n));
+  const W = LX + n * SW + 8, H = TOP + LAYER_ORDER.length * RH + 4;
   const x = (k: number) => LX + SW * k + SW / 2;
   const y = (s: Step) => TOP + RH * rank(s) + RH / 2;
   const visited = new Set(steps.map((s) => s.l));
@@ -252,8 +254,9 @@ function renderMap() {
     g += `</g>`;
   });
 
-  const map = $("map");
-  map.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="min-width:${n * 34 + LX}px" role="img" aria-label="${ui("mapH")}">${g}</svg>`;
+  map.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${ui("mapH")}">${g}</svg>`;
+  // When the map is wider than the screen, keep the current step in view
+  if (W > map.clientWidth) map.scrollLeft = x(i) - map.clientWidth / 2;
   map.querySelectorAll<SVGGElement>(".pt").forEach((el) => {
     el.onclick = () => {
       i = Number(el.dataset.k);
@@ -423,7 +426,10 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") go(1);
   else if (e.key === "ArrowLeft") go(-1);
 });
-window.addEventListener("resize", placePkt);
+window.addEventListener("resize", () => {
+  placePkt();
+  renderMap();
+});
 window.addEventListener("hashchange", () => { if (readHash()) reset(true); });
 document.fonts?.ready.then(placePkt);
 
