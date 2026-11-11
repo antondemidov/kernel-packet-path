@@ -398,25 +398,35 @@ const IN_LOWER: Step[] = [
   },
 ];
 
-const routeDecision = (pick: number, d: Txt): Step => ({
+// The routing decision has a full description per outcome; the step shows the one its scenario takes,
+// and clicking another branch shows that one instead
+const ROUTE_FWD: Txt = {
+  en: "<p>In this case the packet is addressed to another host: its destination IP is not one of this host’s own addresses. <code>ip_route_input_noref()</code> looks up the route for that address, and since forwarding is enabled (<code>net.ipv4.ip_forward = 1</code>), the route gets the <code>ip_forward()</code> handler.</p><p>If forwarding is disabled, the router simply drops the packet. That is the most common answer to “why doesn’t my Linux router route”.</p>",
+  uk: "<p>У цьому випадку пакет адресований іншому хосту: його IP призначення не є жодною з власних адрес цього хоста. <code>ip_route_input_noref()</code> шукає маршрут до цієї адреси, і оскільки пересилання ввімкнене (<code>net.ipv4.ip_forward = 1</code>), маршрут отримує обробник <code>ip_forward()</code>.</p><p>Якщо пересилання вимкнене, маршрутизатор пакет просто відкине. Це найчастіша причина «чому мій Linux-роутер не роутить».</p>",
+};
+const ROUTE_LOCAL: Txt = {
+  en: "<p>In this case the packet is addressed to this host: its destination IP is one of the host’s own addresses (or a broadcast address). With early demux enabled, TCP/UDP first try to find an established socket and reuse its cached route; otherwise <code>ip_route_input_noref()</code> looks up the route. <code>ip_rcv_options()</code> handles IP options.</p><p>The route gets the <code>ip_local_deliver()</code> handler, and <code>dst_input()</code> calls it: the packet goes up the stack, towards TCP/UDP and a socket.</p>",
+  uk: "<p>У цьому випадку пакет адресований цьому хосту: його IP призначення — одна з власних адрес хоста (або broadcast-адреса). Якщо ввімкнено early demux, TCP/UDP спершу шукають встановлений сокет і беруть його закешований маршрут; інакше маршрут шукає <code>ip_route_input_noref()</code>. <code>ip_rcv_options()</code> обробляє IP-опції.</p><p>Маршрут отримує обробник <code>ip_local_deliver()</code>, і <code>dst_input()</code> викликає його: пакет іде нагору по стеку, до TCP/UDP і сокета.</p>",
+};
+const ROUTE_MC: Txt = {
+  en: "<p>In this case the destination is a multicast group (224.0.0.0/4). If this host has joined the group, the route gets <code>ip_local_deliver()</code>, like any packet for us.</p><p>If multicast forwarding is enabled on the interface (a multicast routing daemon such as pimd or smcroute turns it on) and the group is not link-local (outside 224.0.0.x), the handler is <code>ip_mr_input()</code> instead. It sends copies out of the interfaces listed in the multicast routing table, and still delivers locally if the host is a member. If neither applies, the packet is dropped.</p>",
+  uk: "<p>У цьому випадку одержувач — multicast-група (224.0.0.0/4). Якщо цей хост підписаний на групу, маршрут отримує <code>ip_local_deliver()</code>, як будь-який пакет для нас.</p><p>Якщо на інтерфейсі ввімкнене multicast-пересилання (його вмикає демон multicast-маршрутизації, як-от pimd чи smcroute) і група не link-local (поза 224.0.0.x), обробником стає <code>ip_mr_input()</code>. Він розсилає копії на інтерфейси з таблиці multicast-маршрутизації, а якщо хост у групі, ще й доставляє локально. Якщо не підходить ні те, ні інше, пакет відкидається.</p>",
+};
+
+const routeDecision = (pick: number): Step => ({
   l: "ip", fn: "ip_rcv_finish() → dst_input()", data: "IP", f: F_ALL,
   t: { en: "Routing decision", uk: "Рішення маршрутизації" },
   br: [
-    ["ip_forward()", { en: "not for us → forward", uk: "не нам → пересилання" },
-        { en: "The destination is another host and forwarding is enabled: the packet is routed onward without going up the stack.", uk: "Одержувач — інший хост, і пересилання ввімкнене: пакет маршрутизується далі, не піднімаючись по стеку." }, { mode: "forward", fn: "ip_forward()" }],
-    ["ip_local_deliver()", { en: "for us → up the stack", uk: "нам → нагору по стеку" },
-        { en: "The destination is one of this host’s own addresses: the packet goes up to TCP/UDP and a socket.", uk: "Одержувач — одна з власних адрес цього хоста: пакет іде нагору до TCP/UDP і сокета." }, { mode: "ingress", fn: "ip_local_deliver()" }],
-    ["ip_mr_input()", "multicast",
-        { en: "Multicast routing: used when the destination is a multicast group outside 224.0.0.x and multicast forwarding is enabled on the interface (by a routing daemon such as pimd or smcroute). The packet may be sent out on several interfaces, and also delivered locally if this host has joined the group.", uk: "Multicast-маршрутизація: коли одержувач — multicast-група поза 224.0.0.x і на інтерфейсі ввімкнене multicast-пересилання (його вмикає демон маршрутизації, як-от pimd чи smcroute). Пакет може піти на кілька інтерфейсів, а якщо хост сам підписаний на групу, ще й доставитися локально." }],
+    ["ip_forward()", { en: "not for us → forward", uk: "не нам → пересилання" }, ROUTE_FWD, { mode: "forward", fn: "ip_forward()" }],
+    ["ip_local_deliver()", { en: "for us → up the stack", uk: "нам → нагору по стеку" }, ROUTE_LOCAL, { mode: "ingress", fn: "ip_local_deliver()" }],
+    ["ip_mr_input()", "multicast", ROUTE_MC],
   ],
-  brPick: pick, d,
+  brPick: pick,
+  d: [ROUTE_FWD, ROUTE_LOCAL, ROUTE_MC][pick],
 });
 
 const I_UPPER: Step[] = [
-  routeDecision(1, {
-    en: "<p>With early demux enabled, TCP/UDP first try to find an established socket and reuse its cached route. Otherwise <code>ip_route_input_noref()</code> looks up the route and decides where the packet goes. <code>ip_rcv_options()</code> handles IP options. Then <code>dst_input()</code> calls the chosen handler, one of three.</p><p>We are the final recipient, so next is <code>ip_local_deliver()</code>. For what happens when the packet isn’t for us, see the “Forward” scenario.</p>",
-    uk: "<p>Якщо ввімкнено early demux, TCP/UDP спершу шукають встановлений сокет і беруть його закешований маршрут. Інакше <code>ip_route_input_noref()</code> шукає маршрут і вирішує, куди пакет іде. <code>ip_rcv_options()</code> обробляє IP-опції. Потім <code>dst_input()</code> викликає обраний обробник — один із трьох.</p><p>Ми — кінцевий одержувач, тож далі <code>ip_local_deliver()</code>. Що було б, якби пакет був не нам, — дивись сценарій «Пересилання».</p>",
-  }),
+  routeDecision(1),
   {
     l: "ip", fn: "ip_local_deliver()", data: "L4", f: F_ALL, hook: "LOCAL_IN",
     t: { en: "Defragmentation and the LOCAL_IN hook", uk: "Дефрагментація і хук LOCAL_IN" },
@@ -545,10 +555,7 @@ const FWD_NOTE_SCOPE: Txt = {
 };
 
 const F_MID: Step[] = [
-  routeDecision(0, {
-    en: "<p>In this scenario the packet is addressed to some other host: its destination IP is not one of this host’s own addresses. <code>ip_route_input_noref()</code> looks up the route for that address, and since forwarding is enabled (<code>net.ipv4.ip_forward = 1</code>), the route gets the <code>ip_forward()</code> handler.</p><p>If forwarding is disabled, the router simply drops the packet. That is the most common answer to “why doesn’t my Linux router route”.</p>",
-    uk: "<p>У цьому сценарії пакет адресований іншому хосту: його IP призначення не є жодною з власних адрес цього хоста. <code>ip_route_input_noref()</code> шукає маршрут до цієї адреси, і оскільки пересилання ввімкнене (<code>net.ipv4.ip_forward = 1</code>), маршрут отримує обробник <code>ip_forward()</code>.</p><p>Якщо пересилання вимкнене, маршрутизатор пакет просто відкине. Це найчастіша причина «чому мій Linux-роутер не роутить».</p>",
-  }),
+  routeDecision(0),
   {
     l: "ip", fn: "ip_forward()", data: "IP", f: F_ALL,
     t: { en: "Checks on a transit packet", uk: "Перевірки транзитного пакета" },

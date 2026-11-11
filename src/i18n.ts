@@ -69,7 +69,8 @@ export const UI = {
   skbPull: { en: "headers stripped by moving data", uk: "заголовки знімаються зсувом data" },
 
   brOpen: { en: "Open this path →", uk: "Відкрити цей шлях →" },
-  brHere: { en: "This scenario takes this branch.", uk: "Цей сценарій іде саме цією гілкою." },
+  altNote: { en: "You’re looking at another branch. This scenario takes {x}.", uk: "Ти дивишся іншу гілку. Цей сценарій іде через {x}." },
+  altBack: { en: "← Back to this scenario", uk: "← Повернутися до сценарію" },
   v7none: { en: "No notable changes in Linux 7.x for this step.", uk: "У Linux 7.x цей крок суттєво не змінився." },
   v7mark: { en: "changed in 7.x", uk: "змінено в 7.x" },
 

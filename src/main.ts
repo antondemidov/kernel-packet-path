@@ -22,6 +22,8 @@ let mode: Mode = "egress";
 let proto: Proto = "tcp";
 let steps: Step[] = buildSteps(mode, proto);
 let i = 0;
+// A branch the reader clicked to see "what if"; only valid for the step it was chosen on
+let alt: { key: string; k: number } | undefined;
 
 const stack = $("stack");
 const pkt = $("pkt");
@@ -132,7 +134,22 @@ function render() {
   $("title").textContent = t(s.t);
   // Each glossary term is marked once per step, across the description and both notes
   const used = new Set<number>();
-  $("desc").innerHTML = annotate(t(s.d), used);
+  const key = `${mode}-${proto}-${i}`;
+  const altK = alt?.key === key && alt.k !== s.brPick ? alt.k : undefined;
+  const shown = altK ?? s.brPick;
+  const altBox = $("alt");
+  altBox.hidden = altK === undefined;
+  if (altK !== undefined) {
+    const [, , info, go] = s.br![altK];
+    const body = t(info!);
+    $("desc").innerHTML = annotate(body.startsWith("<p>") ? body : `<p>${body}</p>`, used);
+    altBox.innerHTML =
+      `<span>${ui("altNote").replace("{x}", `<code>${esc(t(s.br![s.brPick!][0]))}</code>`)}</span>` +
+      `<button type="button" class="alt-btn" data-alt-back>${ui("altBack")}</button>` +
+      (go ? `<button type="button" class="alt-btn" data-go-mode="${go.mode}" data-fn="${esc(go.fn)}">${ui("brOpen")}</button>` : "");
+  } else {
+    $("desc").innerHTML = annotate(t(s.d), used);
+  }
 
   const note = $("note");
   note.hidden = !s.note;
@@ -147,7 +164,10 @@ function render() {
   const br = $("branches");
   br.hidden = !s.br;
   br.innerHTML = s.br
-    ? s.br.map(([a, b, info], k) => `<button type="button" class="br ${k === s.brPick ? "pick" : ""}" data-b="${k}" ${info ? "" : "disabled"}>${k === s.brPick ? "✓ " : ""}${t(a)} <span>· ${t(b)}</span></button>`).join("")
+    ? s.br.map(([a, b, info], k) => {
+        const cls = `${k === shown ? "pick" : ""} ${altK !== undefined && k === s.brPick ? "scen" : ""}`;
+        return `<button type="button" class="br ${cls}" data-b="${k}" aria-pressed="${k === shown}" ${info ? "" : "disabled"}>${k === shown ? "✓ " : ""}${t(a)} <span>· ${t(b)}</span></button>`;
+      }).join("")
     : "";
 
   const visited = new Set(steps.map((x) => x.l));
@@ -274,21 +294,10 @@ function termTip(el: HTMLElement) {
   return `<b>${esc(el.textContent ?? "")}</b> ${esc(term.def[lang])} <a href="${termUrl(k, lang)}" target="_blank" rel="noopener">${SOURCE_LABEL[term.src][lang]} ↗</a>`;
 }
 
-// What happens on a branch; branches taken by another scenario get a button that opens it
-function branchTip(el: HTMLElement) {
-  const s = steps[i];
-  const k = Number(el.dataset.b);
-  const [label, , info, go] = s.br![k];
-  let html = `<b>${esc(t(label))}</b> ${esc(t(info!))}`;
-  if (k === s.brPick) html += `<span class="tip-here">${ui("brHere")}</span>`;
-  else if (go) html += `<button type="button" class="tip-go" data-go-mode="${go.mode}" data-fn="${esc(go.fn)}">${ui("brOpen")}</button>`;
-  return html;
-}
-
 function showTip(el: HTMLElement) {
   clearTimeout(hideTimer);
   if (tipFor === el && !tip.hidden) return;
-  tip.innerHTML = el.matches(".br") ? branchTip(el) : termTip(el);
+  tip.innerHTML = termTip(el);
   tip.hidden = false;
   tipFor = el;
   const r = el.getBoundingClientRect();
@@ -304,28 +313,37 @@ function hideTip() {
 }
 const hideSoon = () => { hideTimer = window.setTimeout(hideTip, 200); };
 const termOf = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>(".term");
-const tipTarget = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>(".term, .br[data-b]");
 
 document.addEventListener("mouseover", (e) => { const el = termOf(e); if (el) showTip(el); });
 document.addEventListener("mouseout", (e) => { if (termOf(e)) hideSoon(); });
 document.addEventListener("focusin", (e) => { const el = termOf(e); if (el) showTip(el); });
 document.addEventListener("focusout", (e) => { if (termOf(e) && !tip.contains(e.relatedTarget as Node)) hideSoon(); });
 document.addEventListener("click", (e) => {
-  const el = tipTarget(e);
+  const el = termOf(e);
   if (el) showTip(el);
   else if (!tip.contains(e.target as Node)) hideTip();
 });
-tip.addEventListener("click", (e) => {
-  const btn = (e.target as HTMLElement).closest<HTMLElement>(".tip-go");
-  if (!btn) return;
-  mode = btn.dataset.goMode as Mode;
-  steps = buildSteps(mode, proto);
-  i = Math.max(0, steps.findIndex((x) => x.fn === btn.dataset.fn));
-  reset(true);
-  window.scrollTo({ top: $("where").getBoundingClientRect().top + window.scrollY - 80, behavior: "smooth" });
-});
 tip.addEventListener("mouseenter", () => clearTimeout(hideTimer));
 tip.addEventListener("mouseleave", hideSoon);
+
+/* ---------- Branches: click one to read what happens on it ---------- */
+$("branches").addEventListener("click", (e) => {
+  const el = (e.target as HTMLElement).closest<HTMLElement>(".br[data-b]");
+  if (!el) return;
+  alt = { key: `${mode}-${proto}-${i}`, k: Number(el.dataset.b) };
+  render();
+});
+$("alt").addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLElement>("button");
+  if (!btn) return;
+  alt = undefined;
+  if (btn.dataset.goMode) {
+    mode = btn.dataset.goMode as Mode;
+    steps = buildSteps(mode, proto);
+    i = Math.max(0, steps.findIndex((x) => x.fn === btn.dataset.fn));
+    reset(true);
+  } else render();
+});
 
 /* ---------- Controls ---------- */
 function go(d: number) {
