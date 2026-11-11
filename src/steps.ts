@@ -40,6 +40,8 @@ export interface Step {
   br?: [Txt, Txt, Txt?, BranchNext?][];
   brPick?: number;
   note?: Txt;
+  /** Commands to observe this step on a live system: [command, what it shows] */
+  cmd?: [string, Tx][];
   /** What differs in Linux 7.x: optional new function name and an explanation */
   v7?: { fn?: string; note: Txt };
 }
@@ -217,10 +219,6 @@ const OUT_LINK: Step[] = [
       en: "<p><code>mac_header</code> is set. The packet passes <code>tc egress</code> (classifiers, tc BPF programs) and is enqueued into the <b>qdisc</b>: <code>fq_codel</code>, <code>fq</code>, <code>pfifo_fast</code> and so on. This is where shaping, priorities and AQM happen.</p><p>Devices with <code>noqueue</code> (typically virtual ones such as loopback or veth) have no qdisc: the packet goes straight to the driver via <code>dev_hard_start_xmit()</code>.</p>",
       uk: "<p>Виставляється <code>mac_header</code>. Пакет проходить <code>tc egress</code> (класифікатори, BPF-програми tc) і стає в чергу дисципліни <b>qdisc</b>: <code>fq_codel</code>, <code>fq</code>, <code>pfifo_fast</code> тощо. Саме тут працюють шейпінг, пріоритети й AQM.</p><p>У пристроїв з <code>noqueue</code> (зазвичай віртуальних, як-от loopback чи veth) qdisc нема: пакет одразу йде в драйвер через <code>dev_hard_start_xmit()</code>.</p>",
     },
-    note: {
-      en: "<b>In practice:</b> <code>tc -s qdisc show dev eth0</code> shows queues, drops and backlog.",
-      uk: "<b>На практиці:</b> <code>tc -s qdisc show dev eth0</code> покаже черги, дропи й backlog.",
-    },
     v7: {
       note: {
         en: "<b>Linux 7.x.</b> Before the qdisc there are two hook points: the netfilter <b>egress</b> hook (<code>nf_hook_egress()</code>, an nftables <code>egress</code> chain), then tc egress. tc BPF programs can now attach through <b>tcx</b> (<code>tcx_run()</code>): multi-program BPF links instead of only clsact filters.",
@@ -264,10 +262,6 @@ const neigh = (extra: Tx = { en: "", uk: "" }): Step => ({
     en: "<p><code>ip_finish_output2()</code> updates the multicast/broadcast counters and makes sure the <code>sk_buff</code> has headroom for the link-layer header. Then <code>ip_neigh_for_gw()</code> finds the neighbour entry for the next hop (the gateway, or the destination itself on a local network).</p><p>If the entry is valid (<code>NUD_CONNECTED</code>), <code>neigh_hh_output()</code> just copies a cached, ready-made Ethernet header in front of the packet. If the MAC isn’t known yet, <code>neigh_resolve_output()</code> sends an ARP request and the packet waits on the neighbour’s queue until the reply arrives." + extra.en + "</p>",
     uk: "<p><code>ip_finish_output2()</code> оновлює лічильники multicast/broadcast і перевіряє, що в <code>sk_buff</code> є headroom під заголовок канального рівня. Потім <code>ip_neigh_for_gw()</code> знаходить запис сусіда для наступного хопа (шлюзу, або самого одержувача в локальній мережі).</p><p>Якщо запис дійсний (<code>NUD_CONNECTED</code>), <code>neigh_hh_output()</code> просто копіює перед пакетом закешований готовий Ethernet-заголовок. Якщо MAC ще невідома, <code>neigh_resolve_output()</code> надсилає ARP-запит, і пакет чекає в черзі сусіда, поки прийде відповідь." + extra.uk + "</p>",
   },
-  note: {
-    en: "<b>In practice:</b> the neighbour cache is visible with <code>ip neigh show</code>. The <code>INCOMPLETE</code> state means no ARP reply yet.",
-    uk: "<b>На практиці:</b> кеш сусідів видно через <code>ip neigh show</code>. Стан <code>INCOMPLETE</code> означає, що ARP-відповіді ще нема.",
-  },
 });
 
 const finishOutput: Step = {
@@ -277,6 +271,12 @@ const finishOutput: Step = {
     en: "<p>First, cgroup BPF egress programs run and may drop the packet. Then the size is compared with the path MTU. GSO packets (one big “super-packet”) go to <code>ip_finish_output_gso()</code> and are cut into segments later, ideally by the card. A regular packet larger than the MTU goes to <code>ip_fragment()</code>: it is fragmented, or, if DF is set, dropped with ICMP “fragmentation needed” to the sender.</p>",
     uk: "<p>Спершу виконуються BPF-програми cgroup egress, які можуть відкинути пакет. Потім розмір порівнюється з MTU шляху. GSO-пакети (один великий «суперпакет») ідуть у <code>ip_finish_output_gso()</code> і ріжуться на сегменти пізніше, в ідеалі картою. Звичайний пакет, більший за MTU, іде в <code>ip_fragment()</code>: його фрагментують, а якщо стоїть DF — відкидають з ICMP «fragmentation needed» відправнику.</p>",
   },
+};
+
+// What the card does after the driver: the physical layer (shown at the end of Send and Forward)
+const PHY_TX: Tx = {
+  en: "<p>From here on it is hardware. The card’s MAC adds what the wire needs but the kernel never sees: a 7-byte preamble of alternating 1s and 0s plus a start-of-frame byte, so the receiver can lock onto the bit clock, and the FCS checksum at the end; frames shorter than the 64-byte minimum are padded. It hands the bits to the PHY, the transceiver chip that drives the medium, over an MII-family bus (RGMII, SGMII…).</p><p>The PHY turns bits into a physical signal with a line code that depends on the medium. 100BASE-TX sends three voltage levels (MLT-3) over one pair in each direction; 1000BASE-T sends five levels (PAM-5) over all four pairs in both directions at once; 10GBASE-T uses 16 levels (PAM-16). Fiber switches a laser on and off (64b/66b coding at 10G), and links with 50G per lane and faster use four light levels (PAM4). Wi-Fi spreads the data over many radio subcarriers (OFDM).</p><p>Linux only sees the outcome: <code>ethtool eth0</code> shows the negotiated speed, duplex and link state, and with no signal <code>ip link</code> reports <code>NO-CARRIER</code>.</p>",
+  uk: "<p>Далі працює залізо. MAC карти додає те, що потрібно в лінії, але чого ядро не бачить: 7-байтову преамбулу з чергуванням 1 і 0 та байт початку кадру, щоб одержувач синхронізувався з тактом бітів, і контрольну суму FCS у кінці; кадри, коротші за мінімальні 64 байти, доповнюються. Потім біти йдуть до PHY — мікросхеми-трансивера, що працює із середовищем, — через шину сімейства MII (RGMII, SGMII…).</p><p>PHY перетворює біти на фізичний сигнал за допомогою лінійного коду, який залежить від середовища. 100BASE-TX передає три рівні напруги (MLT-3) по одній парі в кожен бік; 1000BASE-T — п’ять рівнів (PAM-5) по всіх чотирьох парах в обидва боки одночасно; 10GBASE-T — 16 рівнів (PAM-16). Оптика вмикає й вимикає лазер (кодування 64b/66b на 10G), а лінки від 50G на смугу використовують чотири рівні світла (PAM4). Wi-Fi розподіляє дані по багатьох радіопіднесучих (OFDM).</p><p>Linux бачить лише результат: <code>ethtool eth0</code> показує узгоджену швидкість, дуплекс і стан лінку, а без сигналу <code>ip link</code> пише <code>NO-CARRIER</code>.</p>",
 };
 
 const E_TAIL: Step[] = [
@@ -308,8 +308,8 @@ const E_TAIL: Step[] = [
     l: "wire", fn: "Ethernet frame", hdr: ALL, data: "ETH", f: F_ALL,
     t: { en: "The packet is on the wire", uk: "Пакет у дроті" },
     d: {
-      en: "<p>Done. From <code>write()</code> to the wire the packet gained three headers, each pushed in front of the data by simply moving the <code>data</code> pointer back into the headroom. There was exactly one copy: from user space into the <code>sk_buff</code>.</p><p>Switch to “Receive” to walk the same path in reverse.</p>",
-      uk: "<p>Готово. Від <code>write()</code> до лінії пакет обріс трьома заголовками, кожен з яких ядро додавало перед даними, просто зсуваючи вказівник <code>data</code> назад у headroom. Копіювання було одне: з user space у <code>sk_buff</code>.</p><p>Перемкнись на «Прийом», щоб пройти той самий шлях у зворотному напрямку.</p>",
+      en: "<p>Done. From <code>write()</code> to the wire the packet gained three headers, each pushed in front of the data by simply moving the <code>data</code> pointer back into the headroom. There was exactly one copy: from user space into the <code>sk_buff</code>.</p>" + PHY_TX.en + "<p>Switch to “Receive” to walk the same path in reverse.</p>",
+      uk: "<p>Готово. Від <code>write()</code> до лінії пакет обріс трьома заголовками, кожен з яких ядро додавало перед даними, просто зсуваючи вказівник <code>data</code> назад у headroom. Копіювання було одне: з user space у <code>sk_buff</code>.</p>" + PHY_TX.uk + "<p>Перемкнись на «Прийом», щоб пройти той самий шлях у зворотному напрямку.</p>",
     },
   },
 ];
@@ -322,8 +322,8 @@ const IN_LOWER: Step[] = [
     l: "wire", fn: "Ethernet frame", raw: true,
     t: { en: "A frame arrives from the wire", uk: "Кадр приходить з лінії" },
     d: {
-      en: "<p>The same set arrives: Ethernet + IPv4 + TCP/UDP + data. Now the kernel does the opposite: it parses headers, decides at each layer who gets the packet next, and strips the header.</p>",
-      uk: "<p>На вхід приходить той самий набір: Ethernet + IPv4 + TCP/UDP + дані. Тепер ядро робить протилежне: розбирає заголовки, на кожному рівні вирішує, кому віддати пакет далі, і знімає заголовок.</p>",
+      en: "<p>On the receiving side the PHY does the reverse: it recovers the bit clock from the signal, decodes the line code back into bits, and the MAC finds the start-of-frame byte after the preamble. Only then is there a frame at all.</p><p>The same set arrives: Ethernet + IPv4 + TCP/UDP + data. Now the kernel does the opposite: it parses headers, decides at each layer who gets the packet next, and strips the header.</p>",
+      uk: "<p>На боці прийому PHY робить зворотне: відновлює такт бітів із сигналу, декодує лінійний код назад у біти, а MAC знаходить байт початку кадру після преамбули. Лише тоді взагалі з’являється кадр.</p><p>На вхід приходить той самий набір: Ethernet + IPv4 + TCP/UDP + дані. Тепер ядро робить протилежне: розбирає заголовки, на кожному рівні вирішує, кому віддати пакет далі, і знімає заголовок.</p>",
     },
   },
   {
@@ -588,10 +588,6 @@ const F_MID: Step[] = [
       en: "<p>The packet passes the <code>NF_INET_FORWARD</code> hook: the <b>FORWARD</b> chain. Router and firewall rules live here, as do Docker and Kubernetes CNI rules for traffic between pods and to the outside.</p><p>Important: a transit packet never passes INPUT or OUTPUT. A rule in INPUT won’t stop it.</p>",
       uk: "<p>Пакет проходить хук <code>NF_INET_FORWARD</code>: ланцюжок <b>FORWARD</b>. Тут живуть правила роутерів і фаєрволів, а також правила Docker і CNI-плагінів Kubernetes для трафіку між подами й назовні.</p><p>Важливо: INPUT і OUTPUT транзитний пакет не проходить зовсім. Правило в INPUT його не зупинить.</p>",
     },
-    note: {
-      en: "<b>In practice:</b> <code>iptables -L FORWARD -v -n</code> or <code>nft list chain inet filter forward</code>; the counters show whether the packet got here.",
-      uk: "<b>На практиці:</b> <code>iptables -L FORWARD -v -n</code> або <code>nft list chain inet filter forward</code> — лічильники покажуть, чи пакет дійшов сюди.",
-    },
     v7: { note: V7_XTABLES },
   },
   {
@@ -615,14 +611,76 @@ const F_MID: Step[] = [
     l: "wire", fn: "Ethernet frame", hdr: ALL, data: "ETH", f: F_ALL,
     t: { en: "The packet moves on", uk: "Пакет пішов далі" },
     d: {
-      en: "<p>The packet crossed the host without climbing above the IP layer: no socket, no application, no copy into user space. That is why Linux makes such a good router, and why Kubernetes nodes work well as gateways for pods.</p><p>Hooks on this path: PREROUTING → FORWARD → POSTROUTING.</p>",
-      uk: "<p>Пакет пройшов через хост, не піднімаючись вище IP-рівня: ні сокета, ні застосунку, ні копіювання в user space. Саме тому Linux так добре працює роутером, а вузли Kubernetes — шлюзом для подів.</p><p>Хуки на цьому шляху: PREROUTING → FORWARD → POSTROUTING.</p>",
+      en: "<p>The packet crossed the host without climbing above the IP layer: no socket, no application, no copy into user space. That is why Linux makes such a good router, and why Kubernetes nodes work well as gateways for pods.</p><p>Hooks on this path: PREROUTING → FORWARD → POSTROUTING.</p>" + PHY_TX.en,
+      uk: "<p>Пакет пройшов через хост, не піднімаючись вище IP-рівня: ні сокета, ні застосунку, ні копіювання в user space. Саме тому Linux так добре працює роутером, а вузли Kubernetes — шлюзом для подів.</p><p>Хуки на цьому шляху: PREROUTING → FORWARD → POSTROUTING.</p>" + PHY_TX.uk,
     },
   },
 ];
 
+/* ---------------- LIVE SYSTEM COMMANDS ---------------- */
+// Commands to observe each step on a running machine. Keyed by step `fn`; the raw incoming frame uses "wire-in".
+// Counter names (nstat) and tracepoints (perf trace) exist in both 5.10 and 7.3.
+
+type Cmd = [string, Tx];
+const c = (cmd: string, en: string, uk: string): Cmd => [cmd, { en, uk }];
+
+const C_STRACE_W = c("strace -f -e trace=write,sendto,sendmsg -p <PID>", "the system calls the process makes, with the bytes it hands to the kernel", "системні виклики процесу й байти, які він віддає ядру");
+const C_STRACE_R = c("strace -f -e trace=read,recvfrom,recvmsg -p <PID>", "the read calls of the process and how much data each one returns", "виклики читання процесу й скільки даних повертає кожен");
+const C_SS_TCP = c("ss -tmi dst 1.1.1.1", "TCP sockets to that host: Send-Q/Recv-Q (bytes waiting in the queues), cwnd, RTT, retransmits, socket memory", "TCP-сокети до цього хоста: Send-Q/Recv-Q (байти в чергах), cwnd, RTT, ретрансмісії, пам’ять сокета");
+const C_SS_UDP = c("ss -uamn", "UDP sockets with their queues and socket memory", "UDP-сокети з їхніми чергами й пам’яттю");
+const C_ROUTE_OUT = c("ip route get 1.1.1.1", "which route, gateway, interface and source address the kernel picks for this destination", "який маршрут, шлюз, інтерфейс і адресу відправника ядро обере для цього одержувача");
+const C_NFT = c("nft list ruleset", "all netfilter rules (nftables, including those created by iptables-nft)", "усі правила netfilter (nftables, зокрема створені через iptables-nft)");
+const C_CONNTRACK = c("conntrack -L -d 1.1.1.1", "connection-tracking entries for that host, including NAT translations (needs conntrack-tools)", "записи conntrack для цього хоста, зокрема NAT-перетворення (потрібен conntrack-tools)");
+const C_LINK = c("ip -s link show dev eth0", "MTU, state and packet/error/drop counters of the interface", "MTU, стан і лічильники пакетів, помилок і дропів інтерфейсу");
+const C_ETHTOOL = c("ethtool eth0", "negotiated speed, duplex and whether a link is detected (in a VM the speed is often “Unknown”)", "узгоджена швидкість, дуплекс і чи є лінк (у віртуалці швидкість часто «Unknown»)");
+const C_ETHTOOL_S = c("ethtool -S eth0", "the driver’s own counters, per queue (names differ between drivers)", "власні лічильники драйвера, по чергах (назви залежать від драйвера)");
+const C_TCPDUMP = c("tcpdump -ni eth0 -e host 1.1.1.1", "the packets themselves, with MAC addresses (-e)", "самі пакети, з MAC-адресами (-e)");
+const C_DROPS = c("perf trace -e skb:kfree_skb", "every place a packet is dropped, as it happens (with a drop reason on newer kernels)", "кожне місце, де відкидається пакет, у реальному часі (на нових ядрах — із причиною)");
+const C_PWRU = c("pwru 'host 1.1.1.1'", "follows a matching packet through kernel functions one by one, like this walkthrough (eBPF tool by Cilium)", "простежує пакет через функції ядра одну за одною, як ця симуляція (eBPF-утиліта від Cilium)");
+
+export const CMDS: Record<string, Cmd[]> = {
+  "write(fd, buf, len)": [C_STRACE_W, C_PWRU],
+  "sock_sendmsg()": [c("ss -tanp", "which process owns which socket, with addresses and state", "який процес володіє яким сокетом, з адресами й станом"), C_STRACE_W],
+  "tcp_sendmsg()": [C_SS_TCP],
+  "tcp_write_xmit()": [C_SS_TCP, c("nstat -az TcpRetransSegs", "how many segments were retransmitted", "скільки сегментів відправлено повторно"), c("perf trace -e tcp:tcp_retransmit_skb", "each retransmission as it happens", "кожна ретрансмісія в реальному часі")],
+  "tcp_transmit_skb()": [c("nstat -az TcpOutSegs", "TCP segments sent", "відправлені TCP-сегменти"), C_SS_TCP],
+  "__ip_queue_xmit()": [C_ROUTE_OUT, c("nstat -az IpOutRequests IpOutNoRoutes", "IP packets sent by this host and those dropped for lack of a route", "IP-пакети, відправлені хостом, і відкинуті через відсутність маршруту")],
+  "udp_sendmsg()": [C_SS_UDP, C_STRACE_W],
+  "ip_route_output_flow()": [C_ROUTE_OUT, c("perf trace -e fib:fib_table_lookup", "each FIB lookup and its result", "кожен пошук у FIB і його результат")],
+  "ip_make_skb() / ip_append_data()": [C_SS_UDP],
+  "udp_send_skb()": [c("nstat -az UdpOutDatagrams UdpSndbufErrors", "datagrams sent and sends that failed for lack of buffer space", "відправлені датаграми й відправки, що не вдалися через брак буфера")],
+  "ip_local_out() → dst_output()": [c("iptables -L OUTPUT -v -n", "OUTPUT chain rules with packet and byte counters", "правила ланцюжка OUTPUT з лічильниками пакетів і байтів"), C_NFT],
+  "ip_output()": [c("iptables -t nat -L POSTROUTING -v -n", "SNAT/masquerade rules with counters", "правила SNAT/masquerade з лічильниками"), C_CONNTRACK],
+  "ip_finish_output()": [c("tracepath -n 1.1.1.1", "the path MTU to the host, hop by hop", "MTU шляху до хоста, хоп за хопом"), c("nstat -az IpFragCreates IpFragFails", "fragments created and packets that couldn’t be fragmented", "створені фрагменти й пакети, які не вдалося фрагментувати")],
+  "ip_finish_output2() → neigh_output()": [c("ip neigh show", "the neighbour (ARP) cache: REACHABLE, STALE, INCOMPLETE, FAILED", "кеш сусідів (ARP): REACHABLE, STALE, INCOMPLETE, FAILED"), c("perf trace -e neigh:neigh_update", "every change of a neighbour entry", "кожна зміна запису сусіда")],
+  "dev_queue_xmit()": [c("tc -s qdisc show dev eth0", "the qdisc with sent packets, drops, overlimits and backlog", "qdisc із відправленими пакетами, дропами, overlimits і backlog"), c("perf trace -e net:net_dev_queue", "every packet entering the device queue", "кожен пакет, що стає в чергу пристрою")],
+  "__qdisc_run() → ndo_start_xmit": [c("ethtool -g eth0", "TX/RX ring sizes: current and maximum", "розміри TX/RX ring: поточні й максимальні"), c("perf trace -e net:net_dev_xmit", "each packet handed to the driver, with the result code", "кожен пакет, переданий драйверу, з кодом результату")],
+  "DMA + IRQ": [c("grep eth0 /proc/interrupts", "interrupt counts per CPU for the card’s queues (in a VM with a virtio card they are named virtioN-input/output instead)", "кількість переривань по процесорах для черг карти (у віртуалці з virtio-картою вони називаються virtioN-input/output)"), C_ETHTOOL_S],
+  "Ethernet frame": [C_ETHTOOL, C_LINK, C_TCPDUMP],
+  "wire-in": [C_ETHTOOL, C_LINK],
+  "FCS, MAC filter, DMA → RX ring, IRQ": [C_ETHTOOL_S, c("ethtool -g eth0", "RX ring size; a small ring overflows under bursts", "розмір RX ring; малий ring переповнюється під сплесками"), C_LINK],
+  "IRQ → NAPI poll → eth_type_trans()": [c("cat /proc/net/softnet_stat", "per CPU, in hex: packets processed, dropped (backlog full), time_squeeze (NAPI ran out of budget)", "по процесорах, у hex: оброблені пакети, відкинуті (backlog повний), time_squeeze (NAPI вичерпав бюджет)"), c("grep eth0 /proc/interrupts", "which CPUs handle the card’s interrupts (virtioN-input in a VM)", "які процесори обробляють переривання карти (у віртуалці — virtioN-input)"), c("ethtool -k eth0 | grep generic-receive-offload", "whether GRO is on", "чи ввімкнено GRO")],
+  "netif_receive_skb()": [C_TCPDUMP, c("tc -s filter show dev eth0 ingress", "tc ingress filters and BPF programs with their counters", "фільтри й BPF-програми tc ingress з лічильниками"), c("perf trace -e net:netif_receive_skb", "every packet entering the stack", "кожен пакет, що входить у стек")],
+  "ip_rcv()": [c("nstat -az IpInReceives IpInHdrErrors", "IP packets received and those with bad headers", "отримані IP-пакети й ті, що мають зіпсований заголовок"), C_CONNTRACK, C_DROPS],
+  "ip_rcv_finish() → dst_input()": [c("ip route get 1.1.1.1 from 10.0.0.5 iif eth0", "the routing decision for a packet arriving on eth0 from 10.0.0.5: “local” if the address is ours, a gateway if it would be forwarded, “No route to host” if forwarding is off", "рішення маршрутизації для пакета, що прийшов на eth0 від 10.0.0.5: «local», якщо адреса наша, шлюз, якщо його переслали б, «No route to host», якщо пересилання вимкнене"), c("sysctl net.ipv4.ip_forward", "whether forwarding is enabled", "чи ввімкнене пересилання")],
+  "ip_local_deliver()": [c("iptables -L INPUT -v -n", "INPUT chain rules with counters", "правила ланцюжка INPUT з лічильниками"), c("nstat -az IpInDelivers IpReasmFails", "packets delivered up the stack and failed reassemblies", "пакети, доставлені нагору, і невдалі збирання фрагментів")],
+  "tcp_v4_rcv()": [c("ss -tan state syn-recv", "connections in the middle of a handshake", "з’єднання посеред handshake"), c("ss -tan state time-wait | wc -l", "how many connections sit in TIME_WAIT", "скільки з’єднань у TIME_WAIT"), c("nstat -az TcpExtListenOverflows TcpExtTCPBacklogDrop", "accept queue overflows and segments dropped from a full socket backlog", "переповнення черги accept і сегменти, відкинуті через повний backlog сокета")],
+  "tcp_v4_do_rcv() → tcp_rcv_established()": [C_SS_TCP, c("nstat -az TcpExtTCPOFOQueue", "segments that arrived out of order and had to wait", "сегменти, що прийшли не по порядку й мусили чекати")],
+  "udp_rcv() → __udp4_lib_rcv()": [c("nstat -az UdpInDatagrams UdpNoPorts UdpRcvbufErrors", "datagrams delivered, sent to closed ports, and dropped because the socket buffer was full", "доставлені датаграми, надіслані на закриті порти, і відкинуті через повний буфер сокета"), C_SS_UDP],
+  "udp_rcv()": [c("nstat -az UdpInDatagrams UdpNoPorts UdpRcvbufErrors", "datagrams delivered, sent to closed ports, and dropped because the socket buffer was full", "доставлені датаграми, надіслані на закриті порти, і відкинуті через повний буфер сокета"), C_SS_UDP],
+  "read() → sock_recvmsg() → tcp_recvmsg()": [C_SS_TCP, C_STRACE_R],
+  "read() → tcp_recvmsg() → tcp_recvmsg_locked()": [C_SS_TCP, C_STRACE_R],
+  "read() → udp_recvmsg()": [C_SS_UDP, C_STRACE_R],
+  "buf": [C_STRACE_R],
+  "ip_forward()": [c("sysctl net.ipv4.ip_forward", "whether forwarding is enabled", "чи ввімкнене пересилання"), c("nstat -az IpForwDatagrams IpInHdrErrors", "forwarded packets, and drops such as expired TTL", "переслані пакети й дропи на кшталт вичерпаного TTL"), c("traceroute -n 1.1.1.1", "the TTL mechanism from the outside: every hop answers “time exceeded”", "механізм TTL ззовні: кожен хоп відповідає «time exceeded»")],
+  "NF_HOOK(FORWARD) → ip_forward_finish()": [c("iptables -L FORWARD -v -n", "FORWARD chain rules with counters: did the packet get here?", "правила ланцюжка FORWARD з лічильниками: чи дійшов пакет сюди?"), C_NFT],
+  "dst_output() → ip_output()": [c("iptables -t nat -L POSTROUTING -v -n", "SNAT/masquerade rules with counters", "правила SNAT/masquerade з лічильниками"), C_CONNTRACK],
+};
+
 export function buildSteps(mode: Mode, proto: Proto): Step[] {
-  if (mode === "egress") return [...E_APP, ...(proto === "tcp" ? E_TCP : E_UDP), ...E_TAIL];
-  if (mode === "ingress") return [...IN_LOWER, ...I_UPPER, ...(proto === "tcp" ? I_TCP : I_UDP), I_SOCK[proto], I_APP];
-  return [...IN_LOWER, ...F_MID];
+  const list =
+    mode === "egress" ? [...E_APP, ...(proto === "tcp" ? E_TCP : E_UDP), ...E_TAIL]
+    : mode === "ingress" ? [...IN_LOWER, ...I_UPPER, ...(proto === "tcp" ? I_TCP : I_UDP), I_SOCK[proto], I_APP]
+    : [...IN_LOWER, ...F_MID];
+  return list.map((st) => ({ ...st, cmd: CMDS[st.raw ? "wire-in" : st.fn] }));
 }

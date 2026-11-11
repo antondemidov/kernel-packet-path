@@ -73,6 +73,10 @@ export const UI = {
   pathSame: { en: "→ After this, the packet continues along the same steps.", uk: "→ Після цього пакет іде далі тими самими кроками." },
   pathEnd: { en: "✕ The packet’s path ends here. Pick another option above to continue.", uk: "✕ Тут шлях пакета закінчується. Обери інший варіант вище, щоб іти далі." },
   pathOut: { en: "↗ From here the packet continues in code this walkthrough doesn’t cover. Pick another option above to continue.", uk: "↗ Далі пакет іде кодом, який ця симуляція не розбирає. Обери інший варіант вище, щоб іти далі." },
+  cmdH: { en: "Try it on a live system", uk: "Подивитися на живій системі" },
+  cmdHint: { en: "replace eth0, 1.1.1.1 and <PID> with your own; most commands need root", uk: "підстав свої eth0, 1.1.1.1 і <PID>; більшості команд потрібен root" },
+  cmdCopy: { en: "Copy", uk: "Копіювати" },
+  cmdCopied: { en: "Copied", uk: "Скопійовано" },
   v7none: { en: "No notable changes in Linux 7.x for this step.", uk: "У Linux 7.x цей крок суттєво не змінився." },
   v7mark: { en: "changed in 7.x", uk: "змінено в 7.x" },
 

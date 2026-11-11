@@ -151,6 +151,14 @@ function render() {
     $("desc").innerHTML = annotate(t(s.d), used);
   }
 
+  const cmds = $("cmds");
+  cmds.hidden = !s.cmd;
+  cmds.innerHTML = s.cmd
+    ? `<div class="br-h">${ui("cmdH")} <span>${esc(ui("cmdHint"))}</span></div><ul>` +
+      s.cmd.map(([c, what]) => `<li><div class="cmd-line"><code>${esc(c)}</code><button type="button" class="cmd-copy" data-cmd="${esc(c).replace(/"/g, "&quot;")}">${ui("cmdCopy")}</button></div><span>${esc(t(what))}</span></li>`).join("") +
+      `</ul>`
+    : "";
+
   const note = $("note");
   note.hidden = !s.note;
   note.innerHTML = s.note ? annotate(t(s.note), used) : "";
@@ -347,6 +355,16 @@ $("branches").addEventListener("click", (e) => {
   }
   alt = k === s.brPick ? undefined : { key: `${mode}-${proto}-${i}`, k };
   render();
+});
+
+$("cmds").addEventListener("click", async (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".cmd-copy");
+  if (!btn) return;
+  try {
+    await navigator.clipboard.writeText(btn.dataset.cmd ?? "");
+    btn.textContent = ui("cmdCopied");
+    setTimeout(() => (btn.textContent = ui("cmdCopy")), 1200);
+  } catch { /* clipboard unavailable: the command is still selectable */ }
 });
 
 /* ---------- Controls ---------- */

@@ -345,6 +345,87 @@ export const TERMS: Term[] = [
   },
 ];
 
+// Physical layer
+TERMS.push(
+  {
+    re: ["PHY"], src: "wiki", url: wiki("Ethernet_physical_layer"),
+    def: {
+      en: "The transceiver chip (or block inside the network card) that turns bits into an electrical, optical or radio signal and back.",
+      uk: "Мікросхема-трансивер (або блок усередині мережевої карти), що перетворює біти на електричний, оптичний чи радіосигнал і назад.",
+    },
+  },
+  {
+    re: ["MII"], src: "wiki", url: wiki("Media-independent_interface"),
+    def: {
+      en: "Media-independent interface: the standard bus between the MAC and the PHY. Variants such as RGMII and SGMII differ in width and speed.",
+      uk: "Media-independent interface: стандартна шина між MAC і PHY. Варіанти на кшталт RGMII і SGMII відрізняються шириною й швидкістю.",
+    },
+  },
+  {
+    re: ["preamble", "преамбул\\p{L}*"], src: "wiki", url: "https://en.wikipedia.org/wiki/Ethernet_frame#Preamble_and_start_frame_delimiter",
+    def: {
+      en: "Seven bytes of alternating 1s and 0s before every Ethernet frame, followed by a start-of-frame byte. They let the receiver synchronise to the sender’s bit clock.",
+      uk: "Сім байтів із чергуванням 1 і 0 перед кожним Ethernet-кадром, після них — байт початку кадру. Дають одержувачу синхронізуватися з тактом бітів відправника.",
+    },
+  },
+  {
+    re: ["line code", "лінійн\\p{L}* код\\p{L}*"], src: "wiki", url: wiki("Line_code", "Лінійне кодування"),
+    def: {
+      en: "The rule for turning bits into signal levels on the medium. Good line codes keep the signal balanced and contain enough transitions for the receiver to recover the clock.",
+      uk: "Правило, за яким біти перетворюються на рівні сигналу в середовищі. Добрий лінійний код тримає сигнал збалансованим і має достатньо переходів, щоб одержувач відновив такт.",
+    },
+  },
+  {
+    re: ["MLT-3"], src: "wiki", url: wiki("MLT-3_encoding"),
+    def: {
+      en: "A line code with three voltage levels (−, 0, +) used by 100 Mbit/s Ethernet; it lowers the signal frequency so it fits ordinary twisted pair.",
+      uk: "Лінійний код із трьома рівнями напруги (−, 0, +) у 100-мегабітному Ethernet; знижує частоту сигналу, щоб він проходив звичайною витою парою.",
+    },
+  },
+  {
+    re: ["PAM-5"], src: "wiki", url: "https://en.wikipedia.org/wiki/Gigabit_Ethernet#1000BASE-T",
+    def: {
+      en: "Five-level pulse-amplitude modulation used by gigabit Ethernet over copper (1000BASE-T), on all four pairs at once.",
+      uk: "П’ятирівнева амплітудно-імпульсна модуляція в гігабітному Ethernet по міді (1000BASE-T), на всіх чотирьох парах одночасно.",
+    },
+  },
+  {
+    re: ["PAM-16"], src: "wiki", url: "https://en.wikipedia.org/wiki/10_Gigabit_Ethernet#10GBASE-T",
+    def: {
+      en: "Sixteen-level pulse-amplitude modulation used by 10GBASE-T, 10-gigabit Ethernet over copper.",
+      uk: "Шістнадцятирівнева амплітудно-імпульсна модуляція в 10GBASE-T — 10-гігабітному Ethernet по міді.",
+    },
+  },
+  {
+    re: ["PAM4"], src: "wiki", url: wiki("Pulse-amplitude_modulation"),
+    def: {
+      en: "Four-level pulse-amplitude modulation: two bits per symbol. Used on fast optical and electrical links, from 50 Gbit/s per lane up.",
+      uk: "Чотирирівнева амплітудно-імпульсна модуляція: два біти на символ. Застосовується на швидких оптичних та електричних лінках, від 50 Гбіт/с на смугу.",
+    },
+  },
+  {
+    re: ["64b/66b"], src: "wiki", url: wiki("64b/66b_encoding"),
+    def: {
+      en: "A line code that adds 2 bits to every 64, mainly to mark block boundaries; used by 10G Ethernet over fiber and many faster links.",
+      uk: "Лінійний код, що додає 2 біти до кожних 64, переважно щоб позначати межі блоків; використовується в 10G Ethernet по оптиці й на багатьох швидших лінках.",
+    },
+  },
+  {
+    re: ["OFDM"], src: "wiki", url: wiki("Orthogonal_frequency-division_multiplexing", "OFDM"),
+    def: {
+      en: "Splitting data across many closely spaced radio subcarriers sent in parallel; the basis of modern Wi-Fi and LTE/5G.",
+      uk: "Розподіл даних на багато близько розташованих радіопіднесучих, що передаються паралельно; основа сучасного Wi-Fi та LTE/5G.",
+    },
+  },
+  {
+    re: ["ethtool"], src: "wiki", url: wiki("Ethtool"),
+    def: {
+      en: "The Linux tool for querying and configuring network card settings: link speed and state, offloads, ring sizes, driver statistics.",
+      uk: "Утиліта Linux для перегляду й налаштування мережевої карти: швидкість і стан лінку, offload-и, розміри ring-буферів, статистика драйвера.",
+    },
+  },
+);
+
 export const SOURCE_LABEL: Record<Source, Tx> = {
   wiki: { en: "Wikipedia", uk: "Вікіпедія" },
   kernel: { en: "Kernel docs", uk: "Документація ядра" },

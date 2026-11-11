@@ -38,6 +38,7 @@ Terms in step texts (AF_INET, MTU, conntrack, NAPI…) get a dotted underline an
 - `f` — which of `mac/network/transport_header` are set; `q` — active queue; `hook` — netfilter hook
 - `br` + `brPick` — decision point and the usual outcome; each branch is `[label, short note, full description, next?]`. Picking a branch shows its description and changes what follows: `next` omitted = same following steps; `"end"` = the packet's path ends here (later steps fade, Next is disabled); `"out"` = continues in code the walkthrough doesn't cover; a `Mode` = switch to that scenario at the same step (matched by `fn`). Branch descriptions follow the same accuracy rule as step text.
 - `note` — clarification
+- `cmd` — commands to observe the step on a live system, attached in `buildSteps()` from `CMDS` (keyed by `fn`; the raw incoming frame uses `"wire-in"`). Read-only commands only. Counter names and tracepoints must exist in both 5.10 and 7.3 source, and commands should be run on a real Linux box before adding them.
 - `t`, `d`, `note`, `br` labels are `Txt`: a plain string (same in both languages) or `{ en, uk }`
 - `v7` — `{ fn?, note }`: optional renamed function and what changed in Linux 7.x
 

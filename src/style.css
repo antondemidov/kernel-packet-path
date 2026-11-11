@@ -126,6 +126,14 @@ a { color: inherit; }
 .br:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .br[disabled] { cursor: default; }
 .br.pick { border-color: var(--ok); color: var(--ok); font-weight: 600; }
+.cmds { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.cmds ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cmds li > span { display: block; font-size: .84rem; color: var(--muted); margin-top: 2px; }
+.cmd-line { display: flex; align-items: flex-start; gap: 8px; }
+.cmd-line code { flex: 1; min-width: 0; overflow-x: auto; white-space: pre; background: var(--sunk); padding: 4px 8px; border-radius: 6px; font-size: .82rem; }
+.cmd-copy { all: unset; cursor: pointer; flex: none; font-size: .74rem; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); color: var(--muted); }
+.cmd-copy:hover { color: var(--fg); border-color: var(--muted); }
+.cmd-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .path-next { color: var(--muted); font-size: .9rem; }
 .path-next.stop { color: var(--fg); font-weight: 600; padding: 8px 12px; border-radius: 8px; background: var(--hook-soft); }
 .br span { font-family: var(--f-body); font-weight: 400; }
