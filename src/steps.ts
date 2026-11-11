@@ -133,8 +133,8 @@ const E_TCP: Step[] = [
       uk: "<p>Сегмент береться із write queue, перед даними додається TCP-заголовок: порти, sequence/ack, прапори, вікно. Поле <code>transport_header</code> вказує на його початок.</p><p>Далі пакет іде на мережевий рівень через функцію сокета <code>queue_xmit</code>, тобто <code>ip_queue_xmit()</code>.</p>",
     },
     note: {
-      en: "<b>Correction.</b> The paper builds the TCP header in <code>tcp_sendmsg()</code>. In 5.10 the header is built by <code>__tcp_transmit_skb()</code>, and the skb is cloned first: the original is kept on the retransmit queue until it is ACKed. The clone is cheap because only metadata is copied.",
-      uk: "<b>Уточнення.</b> Стаття описує побудову TCP-заголовка в <code>tcp_sendmsg()</code>. У коді 5.10 заголовок формує <code>__tcp_transmit_skb()</code>, і перед цим skb клонується: оригінал лишається в черзі ретрансмісії, доки не прийде ACK. Клон дешевий, бо копіюються тільки метадані.",
+      en: "<b>Correction.</b> The paper builds the TCP header in <code>tcp_sendmsg()</code>. In 5.10 the header is built by <code>__tcp_transmit_skb()</code>, and the skb is cloned first: the original is kept on the retransmit queue until it is ACKed. A clone is a second <code>sk_buff</code> that points to the same data, so the payload isn’t copied: one copy goes down to the card, the other waits in case it has to be resent.",
+      uk: "<b>Уточнення.</b> Стаття описує побудову TCP-заголовка в <code>tcp_sendmsg()</code>. У коді 5.10 заголовок формує <code>__tcp_transmit_skb()</code>, і перед цим skb клонується: оригінал лишається в черзі ретрансмісії, доки не прийде ACK. Клон — це другий <code>sk_buff</code>, що вказує на ті самі дані, тож самі дані не копіюються: одна копія йде до карти, друга чекає на випадок повторної відправки.",
     },
   },
   {
@@ -340,7 +340,7 @@ const IN_LOWER: Step[] = [
     l: "link", fn: "netif_receive_skb()", data: "IP", f: ["mac", "network"],
     t: { en: "Who gets the packet", uk: "Кому віддати пакет" },
     br: [
-      ["ptype_all", { en: "clone for tcpdump / AF_PACKET", uk: "клон для tcpdump / AF_PACKET" }],
+      ["ptype_all", { en: "tcpdump / AF_PACKET get a copy", uk: "копія для tcpdump / AF_PACKET" }],
       ["tc / nf ingress", { en: "may drop or redirect", uk: "можуть відкинути чи перенаправити" }],
       ["VLAN", { en: "to the VLAN interface", uk: "на VLAN-інтерфейс" }],
       ["rx_handler()", { en: "bridge / bond takes the packet", uk: "bridge / bond забирає пакет" }],
@@ -348,8 +348,8 @@ const IN_LOWER: Step[] = [
     ],
     brPick: 4,
     d: {
-      en: "<p>Here the packet is dispatched. <code>network_header</code> is set right away. “Taps”, i.e. packet sockets, get a clone. Cloning is cheap: only metadata is copied, the data is shared. Then tc ingress (classifiers, tc BPF) and the netfilter <code>ingress</code> hook run; either may drop or redirect the packet. Frames with a VLAN tag go to the VLAN interface. If the interface is part of a bridge or bond, <code>rx_handler()</code> “steals” the packet.</p><p>Otherwise the handler for the EtherType (<code>ptype_base</code>) is called: for IPv4 that is <code>ip_rcv()</code>.</p>",
-      uk: "<p>Тут пакет розподіляється. Одразу виставляється <code>network_header</code>. Клон отримують «taps» — packet-сокети. Клонування дешеве: копіюються тільки метадані, дані спільні. Далі tc ingress (класифікатори, BPF tc) і netfilter-хук <code>ingress</code>; кожен може відкинути чи перенаправити пакет. Кадри з VLAN-тегом ідуть на VLAN-інтерфейс. Якщо інтерфейс входить у bridge чи bond, <code>rx_handler()</code> «краде» пакет собі.</p><p>Інакше викликається обробник для EtherType (<code>ptype_base</code>): для IPv4 це <code>ip_rcv()</code>.</p>",
+      en: "<p>Here the kernel decides who gets the packet. <code>network_header</code> is set right away.</p><p>Sniffers come first. A running tcpdump or Wireshark has an <code>AF_PACKET</code> socket open, and such sockets sit on the <code>ptype_all</code> list. Each of them is shown the packet: the capture filter runs in the kernel first (e.g. <code>tcpdump port 80</code>, compiled to BPF), and if it matches, tcpdump gets a copy of the bytes in its shared-memory ring buffer. The packet itself goes on regardless: a sniffer only watches, it doesn’t take the packet away.</p><p>Then tc ingress (classifiers, tc BPF) and the netfilter <code>ingress</code> hook run; either may drop or redirect the packet. Frames with a VLAN tag go to the VLAN interface. If the interface is part of a bridge or bond, its <code>rx_handler()</code> takes the packet over, and from then on it is traffic of the bridge or bond, not of this interface.</p><p>Otherwise the handler for the EtherType (<code>ptype_base</code>) is called: for IPv4 that is <code>ip_rcv()</code>.</p>",
+      uk: "<p>Тут ядро вирішує, хто отримає пакет. Одразу виставляється <code>network_header</code>.</p><p>Спершу снифери. Запущений tcpdump чи Wireshark тримає відкритий <code>AF_PACKET</code>-сокет, а такі сокети стоять у списку <code>ptype_all</code>. Кожному з них показують пакет: спершу в ядрі виконується фільтр захоплення (наприклад, <code>tcpdump port 80</code>, скомпільований у BPF), і якщо пакет підходить, tcpdump отримує копію байтів у свій кільцевий буфер у спільній пам’яті. Сам пакет іде далі в будь-якому разі: снифер лише дивиться, а не забирає пакет.</p><p>Далі tc ingress (класифікатори, BPF tc) і netfilter-хук <code>ingress</code>; кожен може відкинути чи перенаправити пакет. Кадри з VLAN-тегом ідуть на VLAN-інтерфейс. Якщо інтерфейс входить у bridge чи bond, його <code>rx_handler()</code> забирає пакет собі, і далі це вже трафік bridge чи bond, а не цього інтерфейсу.</p><p>Інакше викликається обробник для EtherType (<code>ptype_base</code>): для IPv4 це <code>ip_rcv()</code>.</p>",
     },
     note: {
       en: "<b>Correction.</b> The paper treats TAP as a virtual interface for VMs. In the code it is the <code>ptype_all</code> list: anything that opened an <code>AF_PACKET</code> socket. That is where tcpdump and Wireshark see the packet, before netfilter.",
