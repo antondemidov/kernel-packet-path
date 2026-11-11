@@ -144,7 +144,7 @@ function render() {
     const body = t(info!);
     $("desc").innerHTML = annotate(body.startsWith("<p>") ? body : `<p>${body}</p>`, used);
     altBox.innerHTML =
-      `<span>${ui("altNote").replace("{x}", `<code>${esc(t(s.br![s.brPick!][0]))}</code>`)}</span>` +
+      `<span>${ui("altNote").replace("{x}", `<code>${esc(t(s.br![altK][0]))}</code>`).replace("{y}", `<code>${esc(t(s.br![s.brPick!][0]))}</code>`)}</span>` +
       `<button type="button" class="alt-btn" data-alt-back>${ui("altBack")}</button>` +
       (go ? `<button type="button" class="alt-btn" data-go-mode="${go.mode}" data-fn="${esc(go.fn)}">${ui("brOpen")}</button>` : "");
   } else {
@@ -164,10 +164,13 @@ function render() {
   const br = $("branches");
   br.hidden = !s.br;
   br.innerHTML = s.br
-    ? s.br.map(([a, b, info], k) => {
-        const cls = `${k === shown ? "pick" : ""} ${altK !== undefined && k === s.brPick ? "scen" : ""}`;
-        return `<button type="button" class="br ${cls}" data-b="${k}" aria-pressed="${k === shown}" ${info ? "" : "disabled"}>${k === shown ? "✓ " : ""}${t(a)} <span>· ${t(b)}</span></button>`;
-      }).join("")
+    ? `<div class="br-h">${ui("brHead")} <span>${ui("brHint")}</span></div><div class="br-list">` +
+      s.br.map(([a, b, info], k) => {
+        // "ours" = the path this walkthrough follows; "view" = the outcome whose text is shown now
+        const ours = k === s.brPick;
+        const cls = `${ours ? "ours" : ""} ${altK !== undefined && k === shown ? "view" : ""}`;
+        return `<button type="button" class="br ${cls}" data-b="${k}" aria-pressed="${k === shown}" ${info ? "" : "disabled"}>${ours ? `<i class="br-tag">${ui("brOurs")}</i>` : ""}${t(a)} <span>· ${t(b)}</span></button>`;
+      }).join("") + `</div>`
     : "";
 
   const visited = new Set(steps.map((x) => x.l));
