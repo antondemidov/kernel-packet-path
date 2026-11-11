@@ -61,7 +61,7 @@ curl http://1.1.1.1/</pre>
       <a class="flow-row" href="#s5"><span class="n">5</span><span class="lane"><em>GET / · data</em><i class="arr r"></i><i class="arr l"></i></span><span class="what"><span class="en">the HTTP request goes out, the response comes in</span><span class="uk">HTTP-запит виходить, відповідь приходить</span></span></a>
       <a class="flow-row" href="#s6"><span class="n">6</span><span class="lane"><em>close</em><i class="arr x"></i></span><span class="what"><span class="en"><code>curl</code> exits and the socket is destroyed</span><span class="uk"><code>curl</code> завершується, сокет знищується</span></span></a>
     </div>
-    <p class="ex-p"><span class="en">Section 7 is not part of this request: it shows ordinary tools (<code>ss</code>, <code>tc</code>, <code>tcpdump</code>…) run on the same host during a longer download.</span><span class="uk">Розділ 7 — не частина цього запиту: там звичайні інструменти (<code>ss</code>, <code>tc</code>, <code>tcpdump</code>…), запущені на тому ж хості під час довшого завантаження.</span></p>
+    <p class="ex-p"><span class="en">Section 7 is not part of this request: it shows ordinary tools (<code>ss</code>, <code>tc</code>, <code>tcpdump</code>…) run on the same host during a longer download. Section 8 shows how to repeat all of this on your own machine.</span><span class="uk">Розділ 7 — не частина цього запиту: там звичайні інструменти (<code>ss</code>, <code>tc</code>, <code>tcpdump</code>…), запущені на тому ж хості під час довшого завантаження. Розділ 8 — як повторити все це на своїй машині.</span></p>
   </section>
 
   <section class="card" id="s1">
@@ -275,6 +275,60 @@ $ head -2 /proc/net/softnet_stat
 30533ca3 00000000 00000007 00000000 …
 0daa289e 00000000 00000001 00000000 …</pre>
     <p class="ex-p"><span class="en">The card has one interrupt line, and all of its 354 million interrupts landed on CPU 0. Each starts the NAPI poll seen in section 3. In <code>softnet_stat</code> each line is a CPU and the values are hex: packets processed, packets dropped because the backlog queue was full (0 here), and “time squeeze”: the times <code>net_rx_action()</code> stopped because it ran out of its packet budget or time (7 on CPU 0).</span><span class="uk">У карти одна лінія переривань, і всі її 354 мільйони переривань прийшли на CPU 0. Кожне запускає NAPI-опитування з розділу 3. У <code>softnet_stat</code> кожен рядок — це CPU, значення шістнадцяткові: оброблені пакети, пакети, відкинуті через переповнену чергу backlog (тут 0), і «time squeeze»: скільки разів <code>net_rx_action()</code> зупинявся, бо вичерпав бюджет пакетів або час (7 на CPU 0).</span></p>
+  </section>
+
+  <section class="card" id="s8">
+    <div class="card-h"><h2><span class="en">8. Follow it on your own machine</span><span class="uk">8. Як простежити це на своїй машині</span></h2></div>
+    <p class="ex-p"><span class="en">pwru answers one question: <b>which functions did this packet pass through</b>. It does not show everything:</span><span class="uk">pwru відповідає на одне питання: <b>через які функції пройшов цей пакет</b>. Але не все:</span></p>
+    <ul class="ex-list">
+      <li><span class="en">Small functions the compiler inlined into their callers (<code>ip_rcv_finish()</code>, <code>dst_input()</code>, <code>neigh_output()</code>) run but never appear as separate calls.</span><span class="uk">Дрібні функції, які компілятор вбудував у тих, хто їх викликає (<code>ip_rcv_finish()</code>, <code>dst_input()</code>, <code>neigh_output()</code>), виконуються, але окремими викликами не видно.</span></li>
+      <li><span class="en">Functions that take no <code>sk_buff</code>, such as <code>tcp_sendmsg()</code>, are visible only in a call stack (<code>--output-stack</code>).</span><span class="uk">Функції без аргументу <code>sk_buff</code>, як-от <code>tcp_sendmsg()</code>, видно лише в стеку викликів (<code>--output-stack</code>).</span></li>
+      <li><span class="en">It shows the path, not the state around it: how full the queues are, what the counters say, which route and neighbour entry were used. For that there are ordinary tools, listed below.</span><span class="uk">Він показує шлях, а не стан навколо: наскільки заповнені черги, що кажуть лічильники, який маршрут і запис сусіда використано. Для цього є звичайні інструменти, вони нижче.</span></li>
+    </ul>
+
+    <h3 class="ex-h"><span class="en">Repeat the trace</span><span class="uk">Повторити трасування</span></h3>
+    <p class="ex-p"><span class="en">Needs root and a kernel 5.3 or newer built with BTF: check that <code>/sys/kernel/btf/vmlinux</code> exists. pwru loads eBPF programs on hundreds of kernel functions, so use a test machine and a narrow filter.</span><span class="uk">Потрібні root і ядро 5.3 або новіше, зібране з BTF: перевір, що існує <code>/sys/kernel/btf/vmlinux</code>. pwru ставить eBPF-програми на сотні функцій ядра, тож краще тестова машина і вузький фільтр.</span></p>
+    <pre class="trace">ls /sys/kernel/btf/vmlinux
+<span class="cmt"># x86-64; other builds are on https://github.com/cilium/pwru/releases</span>
+curl -LO https://github.com/cilium/pwru/releases/download/v1.0.12/pwru-linux-amd64.tar.gz
+curl -LO https://github.com/cilium/pwru/releases/download/v1.0.12/pwru-linux-amd64.tar.gz.sha256sum
+sha256sum -c pwru-linux-amd64.tar.gz.sha256sum
+tar xzf pwru-linux-amd64.tar.gz
+
+<span class="cmt"># terminal 1: sections 2, 3, 5, 6</span>
+sudo ./pwru --output-caller "host 1.1.1.1 and tcp port 80"
+<span class="cmt"># terminal 1, another run: the call stacks of sections 1, 3, 4, 5</span>
+sudo ./pwru --output-stack --filter-func '^(ip_local_out|tcp_v4_rcv)$' "host 1.1.1.1 and tcp port 80"
+<span class="cmt"># terminal 2</span>
+curl http://1.1.1.1/</pre>
+
+    <h3 class="ex-h"><span class="en">The same request from the application’s side</span><span class="uk">Той самий запит з боку застосунку</span></h3>
+    <pre class="trace">$ strace -f -e trace=connect,sendto,recvfrom curl -s -o /dev/null http://1.1.1.1/
+connect(4, {sa_family=AF_INET, sin_port=htons(80), sin_addr=inet_addr("1.1.1.1")}, 16) = <mark>-1 EINPROGRESS</mark>
+sendto(4, "GET / HTTP/1.1\r\nHost: 1.1.1.1\r\nU"..., 71, MSG_NOSIGNAL, NULL, 0) = 71
+recvfrom(4, 0x5d12589ebae0, 102400, 0, NULL, NULL) = -1 EAGAIN (Resource temporarily unavailable)
+recvfrom(4, "HTTP/1.1 301 Moved Permanently\r\n"..., 102400, 0, NULL, NULL) = <mark>386</mark></pre>
+    <p class="ex-p"><span class="en">Only three kinds of calls, and they line up with the trace. <code>connect()</code> returns at once with <code>EINPROGRESS</code>: curl uses a non-blocking socket, so the SYN leaves (section 2) and the SYN-ACK and ACK (sections 3–4) are handled by the kernel while curl does something else. <code>sendto()</code> hands over the 71-byte request (section 5). The first <code>recvfrom()</code> finds the receive queue empty (<code>EAGAIN</code>); the second takes 386 bytes, the size of the response payload that <code>tcp_queue_rcv()</code> put in the queue in section 5. The server returns the same short redirect every time.</span><span class="uk">Лише три види викликів, і вони збігаються з трасуванням. <code>connect()</code> одразу повертає <code>EINPROGRESS</code>: curl використовує неблокувальний сокет, тож SYN іде (розділ 2), а SYN-ACK і ACK (розділи 3–4) ядро обробляє, поки curl робить щось інше. <code>sendto()</code> віддає 71-байтний запит (розділ 5). Перший <code>recvfrom()</code> бачить порожню чергу прийому (<code>EAGAIN</code>); другий забирає 386 байтів — розмір даних відповіді, які <code>tcp_queue_rcv()</code> поклав у чергу в розділі 5. Сервер щоразу повертає той самий короткий редирект.</span></p>
+
+    <h3 class="ex-h"><span class="en">The state at each layer</span><span class="uk">Стан на кожному рівні</span></h3>
+    <p class="ex-p"><span class="en">Replace <code>eth0</code> with your interface. Every step of the simulation lists more commands like these under “Try it on a live system”.</span><span class="uk">Підстав свій інтерфейс замість <code>eth0</code>. На кожному кроці симуляції є більше таких команд у блоці «Подивитися на живій системі».</span></p>
+    <div class="ex-table"><table>
+      <thead><tr><th><span class="en">Layer</span><span class="uk">Рівень</span></th><th><span class="en">Command</span><span class="uk">Команда</span></th><th><span class="en">What it shows</span><span class="uk">Що показує</span></th><th><span class="en">Step</span><span class="uk">Крок</span></th></tr></thead>
+      <tbody>
+        <tr><td><span class="en">App</span><span class="uk">Застосунок</span></td><td><code>strace -f -e trace=connect,sendto,recvfrom curl -s -o /dev/null http://1.1.1.1/</code></td><td><span class="en">the system calls and how many bytes each one moved</span><span class="uk">системні виклики і скільки байтів кожен передав</span></td><td><a href="./#egress-tcp-1"><span class="en">Send 1</span><span class="uk">Відправка 1</span></a></td></tr>
+        <tr><td><span class="en">Socket</span><span class="uk">Сокет</span></td><td><code>ss -tmi dst 1.1.1.1</code></td><td><span class="en">bytes waiting in the socket queues, socket memory, RTT, cwnd</span><span class="uk">байти в чергах сокета, пам’ять сокета, RTT, cwnd</span></td><td><a href="./#ingress-tcp-10"><span class="en">Receive 10</span><span class="uk">Прийом 10</span></a></td></tr>
+        <tr><td><span class="en">TCP</span><span class="uk">TCP</span></td><td><code>nstat -az TcpOutSegs TcpRetransSegs</code></td><td><span class="en">segments sent and retransmitted, for the whole host</span><span class="uk">відправлені й повторно відправлені сегменти, по всьому хосту</span></td><td><a href="./#egress-tcp-4"><span class="en">Send 4</span><span class="uk">Відправка 4</span></a></td></tr>
+        <tr><td><span class="en">IP</span><span class="uk">IP</span></td><td><code>ip route get 1.1.1.1</code></td><td><span class="en">the route, gateway, device and source address chosen</span><span class="uk">обраний маршрут, шлюз, пристрій і адреса відправника</span></td><td><a href="./#egress-tcp-6"><span class="en">Send 6</span><span class="uk">Відправка 6</span></a></td></tr>
+        <tr><td><span class="en">netfilter</span><span class="uk">netfilter</span></td><td><code>nft list ruleset</code></td><td><span class="en">the rules that run in the hooks</span><span class="uk">правила, що виконуються в хуках</span></td><td><a href="./#egress-tcp-7"><span class="en">Send 7</span><span class="uk">Відправка 7</span></a></td></tr>
+        <tr><td><span class="en">Neighbour</span><span class="uk">Сусіди</span></td><td><code>ip neigh show</code></td><td><span class="en">MAC addresses of next hops and the state of each entry</span><span class="uk">MAC-адреси наступних вузлів і стан кожного запису</span></td><td><a href="./#egress-tcp-10"><span class="en">Send 10</span><span class="uk">Відправка 10</span></a></td></tr>
+        <tr><td><span class="en">qdisc</span><span class="uk">qdisc</span></td><td><code>tc -s qdisc show dev eth0</code></td><td><span class="en">the queue discipline, its backlog, drops and requeues</span><span class="uk">дисципліна черги, її backlog, втрати і requeues</span></td><td><a href="./#egress-tcp-11"><span class="en">Send 11</span><span class="uk">Відправка 11</span></a></td></tr>
+        <tr><td><span class="en">Driver / NIC</span><span class="uk">Драйвер / карта</span></td><td><code>ethtool -S eth0</code></td><td><span class="en">the driver’s own counters, per queue</span><span class="uk">власні лічильники драйвера, по чергах</span></td><td><a href="./#egress-tcp-13"><span class="en">Send 13</span><span class="uk">Відправка 13</span></a></td></tr>
+        <tr><td><span class="en">Interrupts</span><span class="uk">Переривання</span></td><td><code>grep eth0 /proc/interrupts</code></td><td><span class="en">which CPUs take the card’s interrupts</span><span class="uk">які CPU приймають переривання карти</span></td><td><a href="./#ingress-tcp-2"><span class="en">Receive 2</span><span class="uk">Прийом 2</span></a></td></tr>
+        <tr><td><span class="en">NAPI</span><span class="uk">NAPI</span></td><td><code>cat /proc/net/softnet_stat</code></td><td><span class="en">per CPU: packets processed, backlog drops, time squeeze</span><span class="uk">по кожному CPU: оброблені пакети, втрати backlog, time squeeze</span></td><td><a href="./#ingress-tcp-3"><span class="en">Receive 3</span><span class="uk">Прийом 3</span></a></td></tr>
+        <tr><td><span class="en">Wire</span><span class="uk">Дріт</span></td><td><code>tcpdump -ni eth0 -e host 1.1.1.1</code></td><td><span class="en">the frames themselves, as the device sees them</span><span class="uk">самі кадри, як їх бачить пристрій</span></td><td><a href="./#egress-tcp-14"><span class="en">Send 14</span><span class="uk">Відправка 14</span></a></td></tr>
+        <tr><td><span class="en">Drops</span><span class="uk">Втрати</span></td><td><code>perf trace -e skb:kfree_skb</code></td><td><span class="en">every freed packet with the place and the reason</span><span class="uk">кожен звільнений пакет із місцем і причиною</span></td><td><a href="./#ingress-tcp-5"><span class="en">Receive 5</span><span class="uk">Прийом 5</span></a></td></tr>
+      </tbody>
+    </table></div>
   </section>
 
   <footer class="foot"><a href="https://github.com/antondemidov" target="_blank" rel="noopener">github.com/antondemidov</a></footer>

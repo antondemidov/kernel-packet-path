@@ -231,3 +231,9 @@ html { scroll-behavior: smooth; }
   .flow-h > span:last-child { display: none; }
   .flow-row .what { grid-column: 2; font-size: .85rem; color: var(--muted); }
 }
+.ex-table { overflow-x: auto; }
+.ex-table table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+.ex-table th { text-align: left; font-weight: 600; color: var(--muted); font-size: .75rem; padding: 4px 10px 6px 0; border-bottom: 1px solid var(--line); }
+.ex-table td { padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.ex-table td code { white-space: nowrap; }
+.ex-table a { color: var(--accent); white-space: nowrap; }
