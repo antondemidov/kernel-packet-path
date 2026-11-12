@@ -8,6 +8,7 @@
   <meta property="og:title" content="A Packet’s Path Through the Linux Kernel">
   <meta property="og:description" content="From write() to the wire and back, step by step: sk_buff, netfilter, qdisc, NAPI and multicast, checked against the Linux 7.3 and 5.10 source.">
   <meta property="og:type" content="website">
+  <link rel="canonical" href="https://packetpath.fyi/">
   <meta property="og:url" content="https://packetpath.fyi/">
   <meta property="og:image" content="https://packetpath.fyi/og.png">
   <meta property="og:image:width" content="1200">
@@ -15,6 +16,24 @@
   <meta property="og:image:alt" content="A Packet’s Path Through the Linux Kernel: the send path drawn across the stack layers, from App down to Wire">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:image" content="https://packetpath.fyi/og.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "A Packet’s Path Through the Linux Kernel",
+    "url": "https://packetpath.fyi/",
+    "description": "Interactive step-by-step simulation of how a TCP/UDP packet moves through the Linux network stack: send, receive and forward, with sk_buff state and netfilter hooks.",
+    "inLanguage": ["en", "uk"],
+    "author": { "@type": "Person", "name": "Anton Demydov", "url": "https://github.com/antondemidov" },
+    "isBasedOn": {
+      "@type": "ScholarlyArticle",
+      "name": "The Path of a Packet Through the Linux Kernel",
+      "author": [{ "@type": "Person", "name": "A. Stephan" }, { "@type": "Person", "name": "L. Wüstrich" }],
+      "publisher": "Technical University of Munich",
+      "datePublished": "2024"
+    }
+  }
+  </script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='9' width='24' height='14' rx='3' fill='%23d96f0b'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
